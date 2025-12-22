@@ -1,0 +1,19 @@
+# Binaries
+/server
+/worker
+
+# Go build cache
+/bin/
+/coverage.out
+
+# Env files
+.env
+.env.*
+
+# IDE
+.vscode/
+.idea/
+
+# OS
+.DS_Store
+Thumbs.db

@@ -1,0 +1,77 @@
+syntax = "proto3";
+
+package amss.v1;
+
+option go_package = "github.com/aeromaintain/amss/api/proto/amssv1";
+
+service TaskService {
+  rpc CreateTask (CreateTaskRequest) returns (TaskResponse);
+  rpc TransitionState (TransitionStateRequest) returns (TaskResponse);
+}
+
+service InventoryService {
+  rpc ReserveParts (ReservePartsRequest) returns (PartReservationResponse);
+  rpc ReleaseParts (ReleasePartsRequest) returns (PartReservationResponse);
+}
+
+service AuditService {
+  rpc LogAction (AuditLogRequest) returns (AuditLogResponse);
+}
+
+service ProgramService {
+  rpc GenerateTasks (GenerateTasksRequest) returns (GenerateTasksResponse);
+}
+
+message CreateTaskRequest {
+  string org_id = 1;
+  string aircraft_id = 2;
+  string type = 3;
+  string start_time = 4;
+  string end_time = 5;
+}
+
+message TransitionStateRequest {
+  string org_id = 1;
+  string task_id = 2;
+  string new_state = 3;
+}
+
+message TaskResponse {
+  string task_id = 1;
+  string state = 2;
+}
+
+message ReservePartsRequest {
+  string org_id = 1;
+  string task_id = 2;
+  string part_item_id = 3;
+}
+
+message ReleasePartsRequest {
+  string org_id = 1;
+  string reservation_id = 2;
+}
+
+message PartReservationResponse {
+  string reservation_id = 1;
+  string state = 2;
+}
+
+message AuditLogRequest {
+  string org_id = 1;
+  string entity_type = 2;
+  string entity_id = 3;
+  string action = 4;
+}
+
+message AuditLogResponse {
+  string audit_log_id = 1;
+}
+
+message GenerateTasksRequest {
+  string org_id = 1;
+}
+
+message GenerateTasksResponse {
+  int32 created = 1;
+}

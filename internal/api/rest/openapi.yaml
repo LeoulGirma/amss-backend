@@ -1,0 +1,2807 @@
+openapi: 3.0.3
+info:
+  title: AeroMaintain AMSS API
+  version: 0.1.0
+  description: REST API for AeroMaintain AMSS.
+servers:
+  - url: /api/v1
+components:
+  securitySchemes:
+    bearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+  schemas:
+    ErrorResponse:
+      type: object
+      properties:
+        error:
+          type: string
+        code:
+          type: string
+          enum:
+            - auth
+            - forbidden
+            - validation
+            - conflict
+            - not_found
+            - rate_limited
+            - internal
+            - unavailable
+        request_id:
+          type: string
+      required: [error, code]
+      example:
+        error: validation failed
+        code: validation
+        request_id: req-123456
+    TokenResponse:
+      type: object
+      properties:
+        access_token:
+          type: string
+        refresh_token:
+          type: string
+        expires_in:
+          type: integer
+      required: [access_token, refresh_token, expires_in]
+      example:
+        access_token: eyJhbGciOiJSUzI1NiIsInR5cCI6IkpXVCJ9...
+        refresh_token: eyJhbGciOiJSUzI1NiIsInR5cCI6IkpXVCJ9...
+        expires_in: 900
+    Task:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+        org_id:
+          type: string
+          format: uuid
+        aircraft_id:
+          type: string
+          format: uuid
+        program_id:
+          type: string
+          format: uuid
+          nullable: true
+        type:
+          type: string
+          enum: [inspection, repair, overhaul]
+        state:
+          type: string
+          enum: [scheduled, in_progress, completed, cancelled]
+        start_time:
+          type: string
+          format: date-time
+        end_time:
+          type: string
+          format: date-time
+        assigned_mechanic_id:
+          type: string
+          format: uuid
+          nullable: true
+        notes:
+          type: string
+        created_at:
+          type: string
+          format: date-time
+        updated_at:
+          type: string
+          format: date-time
+      required: [id, org_id, aircraft_id, type, state, start_time, end_time, created_at, updated_at]
+    TaskCreateRequest:
+      type: object
+      properties:
+        org_id:
+          type: string
+          format: uuid
+        aircraft_id:
+          type: string
+          format: uuid
+        program_id:
+          type: string
+          format: uuid
+        type:
+          type: string
+          enum: [inspection, repair, overhaul]
+        start_time:
+          type: string
+          format: date-time
+        end_time:
+          type: string
+          format: date-time
+        assigned_mechanic_id:
+          type: string
+          format: uuid
+        notes:
+          type: string
+      required: [aircraft_id, type, start_time, end_time]
+    TaskUpdateRequest:
+      type: object
+      properties:
+        org_id:
+          type: string
+          format: uuid
+        program_id:
+          type: string
+          format: uuid
+        type:
+          type: string
+          enum: [inspection, repair, overhaul]
+        start_time:
+          type: string
+          format: date-time
+        end_time:
+          type: string
+          format: date-time
+        assigned_mechanic_id:
+          type: string
+          format: uuid
+        notes:
+          type: string
+    TaskStateRequest:
+      type: object
+      properties:
+        new_state:
+          type: string
+          enum: [scheduled, in_progress, completed, cancelled]
+        allow_early_completion:
+          type: boolean
+        allow_late_cancel:
+          type: boolean
+        require_all_parts_used:
+          type: boolean
+        notes:
+          type: string
+      required: [new_state]
+    TaskStateResponse:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+        state:
+          type: string
+          enum: [scheduled, in_progress, completed, cancelled]
+      required: [id, state]
+    PartDefinition:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+        org_id:
+          type: string
+          format: uuid
+        name:
+          type: string
+        category:
+          type: string
+        created_at:
+          type: string
+          format: date-time
+        updated_at:
+          type: string
+          format: date-time
+      required: [id, org_id, name, category, created_at, updated_at]
+    PartDefinitionRequest:
+      type: object
+      properties:
+        org_id:
+          type: string
+          format: uuid
+        name:
+          type: string
+        category:
+          type: string
+      required: [name, category]
+    PartItem:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+        org_id:
+          type: string
+          format: uuid
+        part_definition_id:
+          type: string
+          format: uuid
+        serial_number:
+          type: string
+        status:
+          type: string
+          enum: [in_stock, used, disposed]
+        expiry_date:
+          type: string
+          format: date-time
+          nullable: true
+        created_at:
+          type: string
+          format: date-time
+        updated_at:
+          type: string
+          format: date-time
+      required: [id, org_id, part_definition_id, serial_number, status, created_at, updated_at]
+    PartItemCreateRequest:
+      type: object
+      properties:
+        org_id:
+          type: string
+          format: uuid
+        part_definition_id:
+          type: string
+          format: uuid
+        serial_number:
+          type: string
+        status:
+          type: string
+          enum: [in_stock, used, disposed]
+        expiry_date:
+          type: string
+          format: date-time
+      required: [part_definition_id, serial_number]
+    PartItemUpdateRequest:
+      type: object
+      properties:
+        org_id:
+          type: string
+          format: uuid
+        status:
+          type: string
+          enum: [in_stock, used, disposed]
+        expiry_date:
+          type: string
+          format: date-time
+    PartReservation:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+        task_id:
+          type: string
+          format: uuid
+        part_item_id:
+          type: string
+          format: uuid
+        state:
+          type: string
+          enum: [reserved, released, used]
+      required: [id, task_id, part_item_id, state]
+    PartReservationRequest:
+      type: object
+      properties:
+        task_id:
+          type: string
+          format: uuid
+        part_item_id:
+          type: string
+          format: uuid
+      required: [task_id, part_item_id]
+    ReservationStateRequest:
+      type: object
+      properties:
+        new_state:
+          type: string
+          enum: [released, used]
+      required: [new_state]
+    ComplianceItem:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+        task_id:
+          type: string
+          format: uuid
+        description:
+          type: string
+        result:
+          type: string
+          enum: [pass, fail, pending]
+        signed_off:
+          type: boolean
+      required: [id, task_id, description, result, signed_off]
+    ComplianceCreateRequest:
+      type: object
+      properties:
+        task_id:
+          type: string
+          format: uuid
+        description:
+          type: string
+        result:
+          type: string
+          enum: [pass, fail, pending]
+      required: [task_id, description, result]
+    ComplianceUpdateRequest:
+      type: object
+      properties:
+        description:
+          type: string
+        result:
+          type: string
+          enum: [pass, fail, pending]
+      required: [description, result]
+    AuditLog:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+        org_id:
+          type: string
+          format: uuid
+        entity_type:
+          type: string
+        entity_id:
+          type: string
+          format: uuid
+        action:
+          type: string
+        user_id:
+          type: string
+          format: uuid
+        request_id:
+          type: string
+          format: uuid
+        ip_address:
+          type: string
+        user_agent:
+          type: string
+        entity_version:
+          type: integer
+        timestamp:
+          type: string
+          format: date-time
+        details:
+          type: object
+      required: [id, org_id, entity_type, entity_id, action, user_id, request_id, entity_version, timestamp]
+    Organization:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+        name:
+          type: string
+        created_at:
+          type: string
+          format: date-time
+        updated_at:
+          type: string
+          format: date-time
+      required: [id, name, created_at, updated_at]
+    OrganizationRequest:
+      type: object
+      properties:
+        name:
+          type: string
+      required: [name]
+    User:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+        org_id:
+          type: string
+          format: uuid
+        email:
+          type: string
+        role:
+          type: string
+          enum: [admin, tenant_admin, scheduler, mechanic, auditor]
+        last_login:
+          type: string
+          format: date-time
+          nullable: true
+        created_at:
+          type: string
+          format: date-time
+        updated_at:
+          type: string
+          format: date-time
+      required: [id, org_id, email, role, created_at, updated_at]
+    UserCreateRequest:
+      type: object
+      properties:
+        org_id:
+          type: string
+          format: uuid
+        email:
+          type: string
+        role:
+          type: string
+          enum: [admin, tenant_admin, scheduler, mechanic, auditor]
+        password:
+          type: string
+      required: [email, role, password]
+    UserUpdateRequest:
+      type: object
+      properties:
+        org_id:
+          type: string
+          format: uuid
+        email:
+          type: string
+        role:
+          type: string
+          enum: [admin, tenant_admin, scheduler, mechanic, auditor]
+        password:
+          type: string
+    Aircraft:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+        org_id:
+          type: string
+          format: uuid
+        tail_number:
+          type: string
+        model:
+          type: string
+        last_maintenance:
+          type: string
+          format: date-time
+          nullable: true
+        next_due:
+          type: string
+          format: date-time
+          nullable: true
+        status:
+          type: string
+          enum: [operational, maintenance, grounded]
+        capacity_slots:
+          type: integer
+        flight_hours_total:
+          type: integer
+        cycles_total:
+          type: integer
+        created_at:
+          type: string
+          format: date-time
+        updated_at:
+          type: string
+          format: date-time
+      required: [id, org_id, tail_number, model, status, capacity_slots, created_at, updated_at]
+    AircraftCreateRequest:
+      type: object
+      properties:
+        org_id:
+          type: string
+          format: uuid
+        tail_number:
+          type: string
+        model:
+          type: string
+        last_maintenance:
+          type: string
+          format: date-time
+        next_due:
+          type: string
+          format: date-time
+        status:
+          type: string
+          enum: [operational, maintenance, grounded]
+        capacity_slots:
+          type: integer
+        flight_hours_total:
+          type: integer
+        cycles_total:
+          type: integer
+      required: [tail_number, model, capacity_slots]
+    AircraftUpdateRequest:
+      type: object
+      properties:
+        org_id:
+          type: string
+          format: uuid
+        tail_number:
+          type: string
+        model:
+          type: string
+        last_maintenance:
+          type: string
+          format: date-time
+        next_due:
+          type: string
+          format: date-time
+        status:
+          type: string
+          enum: [operational, maintenance, grounded]
+        capacity_slots:
+          type: integer
+        flight_hours_total:
+          type: integer
+        cycles_total:
+          type: integer
+    MaintenanceProgram:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+        org_id:
+          type: string
+          format: uuid
+        aircraft_id:
+          type: string
+          format: uuid
+          nullable: true
+        name:
+          type: string
+        interval_type:
+          type: string
+          enum: [flight_hours, cycles, calendar]
+        interval_value:
+          type: integer
+        last_performed:
+          type: string
+          format: date-time
+          nullable: true
+        created_at:
+          type: string
+          format: date-time
+        updated_at:
+          type: string
+          format: date-time
+      required: [id, org_id, name, interval_type, interval_value, created_at, updated_at]
+    MaintenanceProgramCreateRequest:
+      type: object
+      properties:
+        org_id:
+          type: string
+          format: uuid
+        aircraft_id:
+          type: string
+          format: uuid
+        name:
+          type: string
+        interval_type:
+          type: string
+          enum: [flight_hours, cycles, calendar]
+        interval_value:
+          type: integer
+        last_performed:
+          type: string
+          format: date-time
+      required: [name, interval_type, interval_value]
+    MaintenanceProgramUpdateRequest:
+      type: object
+      properties:
+        org_id:
+          type: string
+          format: uuid
+        aircraft_id:
+          type: string
+          format: uuid
+        name:
+          type: string
+        interval_type:
+          type: string
+          enum: [flight_hours, cycles, calendar]
+        interval_value:
+          type: integer
+        last_performed:
+          type: string
+          format: date-time
+    Import:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+        org_id:
+          type: string
+          format: uuid
+        type:
+          type: string
+          enum: [aircraft, parts, programs]
+        status:
+          type: string
+          enum: [pending, validating, applying, completed, failed]
+        file_name:
+          type: string
+        created_by:
+          type: string
+          format: uuid
+        summary:
+          type: object
+        created_at:
+          type: string
+          format: date-time
+        updated_at:
+          type: string
+          format: date-time
+      required: [id, org_id, type, status, file_name, created_by, created_at, updated_at]
+    ImportRow:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+        row_number:
+          type: integer
+        status:
+          type: string
+          enum: [pending, valid, invalid, applied]
+        errors:
+          type: array
+          items:
+            type: string
+        raw:
+          type: object
+        created_at:
+          type: string
+          format: date-time
+        updated_at:
+          type: string
+          format: date-time
+      required: [id, row_number, status, created_at, updated_at]
+    Webhook:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+        org_id:
+          type: string
+          format: uuid
+        url:
+          type: string
+        events:
+          type: array
+          items:
+            type: string
+        secret:
+          type: string
+        created_at:
+          type: string
+          format: date-time
+        updated_at:
+          type: string
+          format: date-time
+      required: [id, org_id, url, events, created_at, updated_at]
+    WebhookCreateRequest:
+      type: object
+      properties:
+        org_id:
+          type: string
+          format: uuid
+        url:
+          type: string
+        events:
+          type: array
+          items:
+            type: string
+      required: [url, events]
+    ReportSummary:
+      type: object
+      properties:
+        tasks:
+          $ref: "#/components/schemas/ReportTaskSummary"
+        aircraft:
+          $ref: "#/components/schemas/ReportAircraftSummary"
+        parts:
+          $ref: "#/components/schemas/ReportPartsSummary"
+        compliance:
+          $ref: "#/components/schemas/ReportComplianceSummary"
+      required: [tasks, aircraft, parts, compliance]
+    ReportTaskSummary:
+      type: object
+      properties:
+        scheduled:
+          type: integer
+        in_progress:
+          type: integer
+        completed:
+          type: integer
+        cancelled:
+          type: integer
+      required: [scheduled, in_progress, completed, cancelled]
+    ReportAircraftSummary:
+      type: object
+      properties:
+        total:
+          type: integer
+      required: [total]
+    ReportPartsSummary:
+      type: object
+      properties:
+        in_stock:
+          type: integer
+        used:
+          type: integer
+        disposed:
+          type: integer
+      required: [in_stock, used, disposed]
+    ReportComplianceSummary:
+      type: object
+      properties:
+        pending:
+          type: integer
+        signed:
+          type: integer
+      required: [pending, signed]
+    ComplianceReport:
+      type: object
+      properties:
+        total:
+          type: integer
+        pass:
+          type: integer
+        fail:
+          type: integer
+        pending:
+          type: integer
+        signed:
+          type: integer
+        unsigned:
+          type: integer
+      required: [total, pass, fail, pending, signed, unsigned]
+  responses:
+    BadRequest:
+      description: Validation error
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/ErrorResponse"
+          examples:
+            validation:
+              value:
+                error: validation failed
+                code: validation
+                request_id: req-123456
+    Unauthorized:
+      description: Unauthorized
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/ErrorResponse"
+          examples:
+            unauthorized:
+              value:
+                error: unauthorized
+                code: auth
+                request_id: req-123456
+    Forbidden:
+      description: Forbidden
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/ErrorResponse"
+          examples:
+            forbidden:
+              value:
+                error: forbidden
+                code: forbidden
+                request_id: req-123456
+    NotFound:
+      description: Not found
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/ErrorResponse"
+          examples:
+            not_found:
+              value:
+                error: resource not found
+                code: not_found
+                request_id: req-123456
+    Conflict:
+      description: Conflict
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/ErrorResponse"
+          examples:
+            conflict:
+              value:
+                error: conflict
+                code: conflict
+                request_id: req-123456
+    TooManyRequests:
+      description: Rate limited
+      headers:
+        X-RateLimit-Remaining:
+          $ref: "#/components/headers/RateLimitRemaining"
+        X-RateLimit-Reset:
+          $ref: "#/components/headers/RateLimitReset"
+        Retry-After:
+          $ref: "#/components/headers/RetryAfter"
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/ErrorResponse"
+          examples:
+            rate_limited:
+              value:
+                error: rate limit exceeded
+                code: rate_limited
+                request_id: req-123456
+    InternalError:
+      description: Internal error
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/ErrorResponse"
+          examples:
+            internal_error:
+              value:
+                error: internal error
+                code: internal
+                request_id: req-123456
+  headers:
+    RateLimitRemaining:
+      description: Requests remaining in the current window.
+      schema:
+        type: integer
+    RateLimitReset:
+      description: Unix timestamp (seconds) when the rate limit window resets.
+      schema:
+        type: integer
+    RetryAfter:
+      description: Seconds to wait before retrying the request.
+      schema:
+        type: integer
+  parameters:
+    IdempotencyKey:
+      name: Idempotency-Key
+      in: header
+      required: false
+      schema:
+        type: string
+paths:
+  /auth/login:
+    post:
+      summary: Login
+      x-roles: [public]
+      x-scopes: [public]
+      x-error-codes: [validation, auth, rate_limited, internal]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                org_id:
+                  type: string
+                  format: uuid
+                email:
+                  type: string
+                password:
+                  type: string
+              required: [org_id, email, password]
+      responses:
+        "200":
+          description: Tokens
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/TokenResponse"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "429":
+          $ref: "#/components/responses/TooManyRequests"
+        "500":
+          $ref: "#/components/responses/InternalError"
+      security: []
+  /auth/refresh:
+    post:
+      summary: Refresh token
+      x-roles: [public]
+      x-scopes: [public]
+      x-error-codes: [validation, auth]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                refresh_token:
+                  type: string
+              required: [refresh_token]
+      responses:
+        "200":
+          description: Tokens
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/TokenResponse"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "500":
+          $ref: "#/components/responses/InternalError"
+      security: []
+  /auth/logout:
+    post:
+      summary: Logout
+      x-roles: [public]
+      x-scopes: [public]
+      x-error-codes: [validation, auth]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                refresh_token:
+                  type: string
+              required: [refresh_token]
+      responses:
+        "204":
+          description: Logged out
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "500":
+          $ref: "#/components/responses/InternalError"
+      security: []
+  /organizations:
+    get:
+      summary: List organizations
+      x-roles: [admin]
+      x-scopes: [admin]
+      x-error-codes: [validation, auth, forbidden, internal]
+      parameters:
+        - name: name
+          in: query
+          schema:
+            type: string
+        - name: limit
+          in: query
+          schema:
+            type: integer
+        - name: offset
+          in: query
+          schema:
+            type: integer
+      responses:
+        "200":
+          description: Organizations
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/Organization"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "500":
+          $ref: "#/components/responses/InternalError"
+    post:
+      summary: Create organization
+      x-roles: [admin]
+      x-scopes: [admin]
+      x-error-codes: [validation, auth, forbidden, conflict, internal]
+      parameters:
+        - $ref: "#/components/parameters/IdempotencyKey"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/OrganizationRequest"
+      responses:
+        "201":
+          description: Created
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Organization"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "409":
+          $ref: "#/components/responses/Conflict"
+        "500":
+          $ref: "#/components/responses/InternalError"
+  /organizations/{id}:
+    get:
+      summary: Get organization
+      x-roles: [admin, tenant_admin]
+      x-scopes: [admin, tenant_admin]
+      x-error-codes: [auth, forbidden, not_found, internal]
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        "200":
+          description: Organization
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Organization"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "500":
+          $ref: "#/components/responses/InternalError"
+    patch:
+      summary: Update organization
+      x-roles: [admin, tenant_admin]
+      x-scopes: [admin, tenant_admin]
+      x-error-codes: [validation, auth, forbidden, not_found, internal]
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/OrganizationRequest"
+      responses:
+        "200":
+          description: Updated
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Organization"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "500":
+          $ref: "#/components/responses/InternalError"
+  /users:
+    get:
+      summary: List users
+      x-roles: [admin, tenant_admin]
+      x-scopes: [admin, tenant_admin]
+      x-error-codes: [validation, auth, forbidden, internal]
+      parameters:
+        - name: org_id
+          in: query
+          schema:
+            type: string
+            format: uuid
+        - name: role
+          in: query
+          schema:
+            type: string
+        - name: email
+          in: query
+          schema:
+            type: string
+        - name: limit
+          in: query
+          schema:
+            type: integer
+        - name: offset
+          in: query
+          schema:
+            type: integer
+      responses:
+        "200":
+          description: Users
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/User"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "500":
+          $ref: "#/components/responses/InternalError"
+    post:
+      summary: Create user
+      x-roles: [admin, tenant_admin]
+      x-scopes: [admin, tenant_admin]
+      x-error-codes: [validation, auth, forbidden, conflict, internal]
+      parameters:
+        - $ref: "#/components/parameters/IdempotencyKey"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/UserCreateRequest"
+      responses:
+        "201":
+          description: Created
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/User"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "409":
+          $ref: "#/components/responses/Conflict"
+        "500":
+          $ref: "#/components/responses/InternalError"
+  /users/{id}:
+    get:
+      summary: Get user
+      x-roles: [admin, tenant_admin]
+      x-scopes: [admin, tenant_admin]
+      x-error-codes: [auth, forbidden, not_found, internal]
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+        - name: org_id
+          in: query
+          schema:
+            type: string
+            format: uuid
+      responses:
+        "200":
+          description: User
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/User"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "500":
+          $ref: "#/components/responses/InternalError"
+    patch:
+      summary: Update user
+      x-roles: [admin, tenant_admin]
+      x-scopes: [admin, tenant_admin]
+      x-error-codes: [validation, auth, forbidden, not_found, internal]
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/UserUpdateRequest"
+      responses:
+        "200":
+          description: Updated
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/User"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "500":
+          $ref: "#/components/responses/InternalError"
+    delete:
+      summary: Delete user
+      x-roles: [admin, tenant_admin]
+      x-scopes: [admin, tenant_admin]
+      x-error-codes: [auth, forbidden, not_found, internal]
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+        - name: org_id
+          in: query
+          schema:
+            type: string
+            format: uuid
+      responses:
+        "204":
+          description: Deleted
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "500":
+          $ref: "#/components/responses/InternalError"
+  /aircraft:
+    get:
+      summary: List aircraft
+      x-roles: [authenticated]
+      x-scopes: [authenticated]
+      x-error-codes: [validation, auth, internal]
+      parameters:
+        - name: org_id
+          in: query
+          schema:
+            type: string
+            format: uuid
+        - name: status
+          in: query
+          schema:
+            type: string
+        - name: model
+          in: query
+          schema:
+            type: string
+        - name: tail_number
+          in: query
+          schema:
+            type: string
+        - name: limit
+          in: query
+          schema:
+            type: integer
+        - name: offset
+          in: query
+          schema:
+            type: integer
+      responses:
+        "200":
+          description: Aircraft
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/Aircraft"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "500":
+          $ref: "#/components/responses/InternalError"
+    post:
+      summary: Create aircraft
+      x-roles: [scheduler, mechanic, admin]
+      x-scopes: [scheduler, mechanic, admin]
+      x-error-codes: [validation, auth, forbidden, conflict, internal]
+      parameters:
+        - $ref: "#/components/parameters/IdempotencyKey"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/AircraftCreateRequest"
+      responses:
+        "201":
+          description: Created
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Aircraft"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "409":
+          $ref: "#/components/responses/Conflict"
+        "500":
+          $ref: "#/components/responses/InternalError"
+  /aircraft/{id}:
+    get:
+      summary: Get aircraft
+      x-roles: [authenticated]
+      x-scopes: [authenticated]
+      x-error-codes: [auth, forbidden, not_found, internal]
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+        - name: org_id
+          in: query
+          schema:
+            type: string
+            format: uuid
+      responses:
+        "200":
+          description: Aircraft
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Aircraft"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "500":
+          $ref: "#/components/responses/InternalError"
+    patch:
+      summary: Update aircraft
+      x-roles: [scheduler, mechanic, admin]
+      x-scopes: [scheduler, mechanic, admin]
+      x-error-codes: [validation, auth, forbidden, not_found, internal]
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/AircraftUpdateRequest"
+      responses:
+        "200":
+          description: Updated
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Aircraft"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "500":
+          $ref: "#/components/responses/InternalError"
+    delete:
+      summary: Delete aircraft
+      x-roles: [scheduler, mechanic, admin]
+      x-scopes: [scheduler, mechanic, admin]
+      x-error-codes: [auth, forbidden, not_found, internal]
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+        - name: org_id
+          in: query
+          schema:
+            type: string
+            format: uuid
+      responses:
+        "204":
+          description: Deleted
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "500":
+          $ref: "#/components/responses/InternalError"
+  /maintenance-programs:
+    get:
+      summary: List maintenance programs
+      x-roles: [scheduler, auditor, tenant_admin, admin]
+      x-scopes: [scheduler, auditor, tenant_admin, admin]
+      x-error-codes: [validation, auth, forbidden, internal]
+      parameters:
+        - name: org_id
+          in: query
+          schema:
+            type: string
+            format: uuid
+        - name: aircraft_id
+          in: query
+          schema:
+            type: string
+            format: uuid
+        - name: limit
+          in: query
+          schema:
+            type: integer
+        - name: offset
+          in: query
+          schema:
+            type: integer
+      responses:
+        "200":
+          description: Programs
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/MaintenanceProgram"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "500":
+          $ref: "#/components/responses/InternalError"
+    post:
+      summary: Create maintenance program
+      x-roles: [scheduler, admin]
+      x-scopes: [scheduler, admin]
+      x-error-codes: [validation, auth, forbidden, internal]
+      parameters:
+        - $ref: "#/components/parameters/IdempotencyKey"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/MaintenanceProgramCreateRequest"
+      responses:
+        "201":
+          description: Created
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/MaintenanceProgram"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "500":
+          $ref: "#/components/responses/InternalError"
+  /maintenance-programs/{id}:
+    get:
+      summary: Get maintenance program
+      x-roles: [scheduler, auditor, tenant_admin, admin]
+      x-scopes: [scheduler, auditor, tenant_admin, admin]
+      x-error-codes: [auth, forbidden, not_found, internal]
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+        - name: org_id
+          in: query
+          schema:
+            type: string
+            format: uuid
+      responses:
+        "200":
+          description: Program
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/MaintenanceProgram"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "500":
+          $ref: "#/components/responses/InternalError"
+    patch:
+      summary: Update maintenance program
+      x-roles: [scheduler, admin]
+      x-scopes: [scheduler, admin]
+      x-error-codes: [validation, auth, forbidden, not_found, internal]
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/MaintenanceProgramUpdateRequest"
+      responses:
+        "200":
+          description: Updated
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/MaintenanceProgram"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "500":
+          $ref: "#/components/responses/InternalError"
+    delete:
+      summary: Delete maintenance program
+      x-roles: [scheduler, admin]
+      x-scopes: [scheduler, admin]
+      x-error-codes: [auth, forbidden, not_found, internal]
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+        - name: org_id
+          in: query
+          schema:
+            type: string
+            format: uuid
+      responses:
+        "204":
+          description: Deleted
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "500":
+          $ref: "#/components/responses/InternalError"
+  /imports/csv:
+    post:
+      summary: Upload import CSV
+      x-roles: [scheduler, tenant_admin, admin]
+      x-scopes: [scheduler, tenant_admin, admin]
+      x-error-codes: [validation, auth, forbidden, internal]
+      requestBody:
+        required: true
+        content:
+          multipart/form-data:
+            schema:
+              type: object
+              properties:
+                type:
+                  type: string
+                  enum: [aircraft, parts, programs]
+                org_id:
+                  type: string
+                  format: uuid
+                file:
+                  type: string
+                  format: binary
+              required: [type, file]
+      responses:
+        "202":
+          description: Accepted
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Import"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "500":
+          $ref: "#/components/responses/InternalError"
+  /imports/{id}:
+    get:
+      summary: Get import
+      x-roles: [scheduler, tenant_admin, admin]
+      x-scopes: [scheduler, tenant_admin, admin]
+      x-error-codes: [auth, forbidden, not_found, internal]
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+        - name: org_id
+          in: query
+          schema:
+            type: string
+            format: uuid
+      responses:
+        "200":
+          description: Import
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Import"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "500":
+          $ref: "#/components/responses/InternalError"
+  /imports/{id}/rows:
+    get:
+      summary: List import rows
+      x-roles: [scheduler, tenant_admin, admin]
+      x-scopes: [scheduler, tenant_admin, admin]
+      x-error-codes: [validation, auth, forbidden, internal]
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+        - name: org_id
+          in: query
+          schema:
+            type: string
+            format: uuid
+        - name: status
+          in: query
+          schema:
+            type: string
+        - name: limit
+          in: query
+          schema:
+            type: integer
+        - name: offset
+          in: query
+          schema:
+            type: integer
+      responses:
+        "200":
+          description: Import rows
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/ImportRow"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "500":
+          $ref: "#/components/responses/InternalError"
+  /webhooks:
+    get:
+      summary: List webhooks
+      x-roles: [tenant_admin, admin]
+      x-scopes: [tenant_admin, admin]
+      x-error-codes: [auth, forbidden, internal]
+      parameters:
+        - name: org_id
+          in: query
+          schema:
+            type: string
+            format: uuid
+      responses:
+        "200":
+          description: Webhooks
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/Webhook"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "500":
+          $ref: "#/components/responses/InternalError"
+    post:
+      summary: Create webhook
+      x-roles: [tenant_admin, admin]
+      x-scopes: [tenant_admin, admin]
+      x-error-codes: [validation, auth, forbidden, internal]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/WebhookCreateRequest"
+      responses:
+        "201":
+          description: Created
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Webhook"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "500":
+          $ref: "#/components/responses/InternalError"
+  /webhooks/{id}:
+    delete:
+      summary: Delete webhook
+      x-roles: [tenant_admin, admin]
+      x-scopes: [tenant_admin, admin]
+      x-error-codes: [auth, forbidden, not_found, internal]
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+        - name: org_id
+          in: query
+          schema:
+            type: string
+            format: uuid
+      responses:
+        "204":
+          description: Deleted
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "500":
+          $ref: "#/components/responses/InternalError"
+  /webhooks/{id}/test:
+    post:
+      summary: Send test webhook
+      x-roles: [tenant_admin, admin]
+      x-scopes: [tenant_admin, admin]
+      x-error-codes: [auth, forbidden, not_found, internal]
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+        - name: org_id
+          in: query
+          schema:
+            type: string
+            format: uuid
+      responses:
+        "202":
+          description: Queued
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  status:
+                    type: string
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "500":
+          $ref: "#/components/responses/InternalError"
+  /maintenance-tasks:
+    get:
+      summary: List maintenance tasks
+      x-roles: [authenticated]
+      x-scopes: [authenticated]
+      x-error-codes: [validation, auth, internal]
+      parameters:
+        - name: org_id
+          in: query
+          schema:
+            type: string
+            format: uuid
+        - name: aircraft_id
+          in: query
+          schema:
+            type: string
+            format: uuid
+        - name: state
+          in: query
+          schema:
+            type: string
+        - name: type
+          in: query
+          schema:
+            type: string
+        - name: start_from
+          in: query
+          schema:
+            type: string
+            format: date-time
+        - name: start_to
+          in: query
+          schema:
+            type: string
+            format: date-time
+        - name: limit
+          in: query
+          schema:
+            type: integer
+        - name: offset
+          in: query
+          schema:
+            type: integer
+      responses:
+        "200":
+          description: Task list
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/Task"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "429":
+          $ref: "#/components/responses/TooManyRequests"
+        "500":
+          $ref: "#/components/responses/InternalError"
+    post:
+      summary: Create maintenance task
+      x-roles: [scheduler, admin]
+      x-scopes: [scheduler, admin]
+      x-error-codes: [validation, auth, forbidden, conflict, internal]
+      parameters:
+        - $ref: "#/components/parameters/IdempotencyKey"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/TaskCreateRequest"
+      responses:
+        "201":
+          description: Created
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Task"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "409":
+          $ref: "#/components/responses/Conflict"
+        "429":
+          $ref: "#/components/responses/TooManyRequests"
+        "500":
+          $ref: "#/components/responses/InternalError"
+  /maintenance-tasks/{id}:
+    get:
+      summary: Get maintenance task
+      x-roles: [authenticated]
+      x-scopes: [authenticated]
+      x-error-codes: [validation, auth, forbidden, not_found, internal]
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+        - name: org_id
+          in: query
+          schema:
+            type: string
+            format: uuid
+      responses:
+        "200":
+          description: Task detail
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  task:
+                    $ref: "#/components/schemas/Task"
+                  reservations:
+                    type: array
+                    items:
+                      $ref: "#/components/schemas/PartReservation"
+                  compliance:
+                    type: array
+                    items:
+                      $ref: "#/components/schemas/ComplianceItem"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "429":
+          $ref: "#/components/responses/TooManyRequests"
+        "500":
+          $ref: "#/components/responses/InternalError"
+    patch:
+      summary: Update maintenance task
+      x-roles: [scheduler, admin]
+      x-scopes: [scheduler, admin]
+      x-error-codes: [validation, auth, forbidden, not_found, conflict, internal]
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/TaskUpdateRequest"
+      responses:
+        "200":
+          description: Updated task
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Task"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "409":
+          $ref: "#/components/responses/Conflict"
+        "429":
+          $ref: "#/components/responses/TooManyRequests"
+        "500":
+          $ref: "#/components/responses/InternalError"
+    delete:
+      summary: Delete maintenance task
+      x-roles: [scheduler, admin]
+      x-scopes: [scheduler, admin]
+      x-error-codes: [auth, forbidden, not_found, internal]
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+        - name: org_id
+          in: query
+          schema:
+            type: string
+            format: uuid
+      responses:
+        "204":
+          description: Deleted
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "429":
+          $ref: "#/components/responses/TooManyRequests"
+        "500":
+          $ref: "#/components/responses/InternalError"
+  /maintenance-tasks/{id}/state:
+    patch:
+      summary: Transition task state
+      x-roles: [scheduler, mechanic, admin]
+      x-scopes: [scheduler, mechanic, admin]
+      x-error-codes: [validation, auth, forbidden, not_found, conflict, internal]
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/TaskStateRequest"
+      responses:
+        "200":
+          description: Updated task
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/TaskStateResponse"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "409":
+          $ref: "#/components/responses/Conflict"
+        "429":
+          $ref: "#/components/responses/TooManyRequests"
+        "500":
+          $ref: "#/components/responses/InternalError"
+  /part-definitions:
+    get:
+      summary: List part definitions
+      x-roles: [authenticated]
+      x-scopes: [authenticated]
+      x-error-codes: [validation, auth, internal]
+      parameters:
+        - name: org_id
+          in: query
+          schema:
+            type: string
+            format: uuid
+        - name: name
+          in: query
+          schema:
+            type: string
+        - name: limit
+          in: query
+          schema:
+            type: integer
+        - name: offset
+          in: query
+          schema:
+            type: integer
+      responses:
+        "200":
+          description: Part definitions
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/PartDefinition"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "429":
+          $ref: "#/components/responses/TooManyRequests"
+        "500":
+          $ref: "#/components/responses/InternalError"
+    post:
+      summary: Create part definition
+      x-roles: [scheduler, mechanic, admin]
+      x-scopes: [scheduler, mechanic, admin]
+      x-error-codes: [validation, auth, forbidden, internal]
+      parameters:
+        - $ref: "#/components/parameters/IdempotencyKey"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/PartDefinitionRequest"
+      responses:
+        "201":
+          description: Created
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/PartDefinition"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "429":
+          $ref: "#/components/responses/TooManyRequests"
+        "500":
+          $ref: "#/components/responses/InternalError"
+  /part-definitions/{id}:
+    patch:
+      summary: Update part definition
+      x-roles: [scheduler, mechanic, admin]
+      x-scopes: [scheduler, mechanic, admin]
+      x-error-codes: [validation, auth, forbidden, not_found, internal]
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+        - name: org_id
+          in: query
+          schema:
+            type: string
+            format: uuid
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/PartDefinitionRequest"
+      responses:
+        "200":
+          description: Updated
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/PartDefinition"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "429":
+          $ref: "#/components/responses/TooManyRequests"
+        "500":
+          $ref: "#/components/responses/InternalError"
+    delete:
+      summary: Delete part definition
+      x-roles: [scheduler, mechanic, admin]
+      x-scopes: [scheduler, mechanic, admin]
+      x-error-codes: [auth, forbidden, not_found, internal]
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+        - name: org_id
+          in: query
+          schema:
+            type: string
+            format: uuid
+      responses:
+        "204":
+          description: Deleted
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "429":
+          $ref: "#/components/responses/TooManyRequests"
+        "500":
+          $ref: "#/components/responses/InternalError"
+  /part-items:
+    get:
+      summary: List part items
+      x-roles: [authenticated]
+      x-scopes: [authenticated]
+      x-error-codes: [validation, auth, internal]
+      parameters:
+        - name: org_id
+          in: query
+          schema:
+            type: string
+            format: uuid
+        - name: definition_id
+          in: query
+          schema:
+            type: string
+            format: uuid
+        - name: status
+          in: query
+          schema:
+            type: string
+        - name: expiry_before
+          in: query
+          schema:
+            type: string
+            format: date-time
+        - name: limit
+          in: query
+          schema:
+            type: integer
+        - name: offset
+          in: query
+          schema:
+            type: integer
+      responses:
+        "200":
+          description: Part items
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/PartItem"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "429":
+          $ref: "#/components/responses/TooManyRequests"
+        "500":
+          $ref: "#/components/responses/InternalError"
+    post:
+      summary: Create part item
+      x-roles: [scheduler, mechanic, admin]
+      x-scopes: [scheduler, mechanic, admin]
+      x-error-codes: [validation, auth, forbidden, internal]
+      parameters:
+        - $ref: "#/components/parameters/IdempotencyKey"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/PartItemCreateRequest"
+      responses:
+        "201":
+          description: Created
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/PartItem"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "429":
+          $ref: "#/components/responses/TooManyRequests"
+        "500":
+          $ref: "#/components/responses/InternalError"
+  /part-items/{id}:
+    patch:
+      summary: Update part item
+      x-roles: [scheduler, mechanic, admin]
+      x-scopes: [scheduler, mechanic, admin]
+      x-error-codes: [validation, auth, forbidden, not_found, internal]
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+        - name: org_id
+          in: query
+          schema:
+            type: string
+            format: uuid
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/PartItemUpdateRequest"
+      responses:
+        "200":
+          description: Updated
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/PartItem"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "429":
+          $ref: "#/components/responses/TooManyRequests"
+        "500":
+          $ref: "#/components/responses/InternalError"
+    delete:
+      summary: Delete part item
+      x-roles: [scheduler, mechanic, admin]
+      x-scopes: [scheduler, mechanic, admin]
+      x-error-codes: [auth, forbidden, not_found, internal]
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+        - name: org_id
+          in: query
+          schema:
+            type: string
+            format: uuid
+      responses:
+        "204":
+          description: Deleted
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "429":
+          $ref: "#/components/responses/TooManyRequests"
+        "500":
+          $ref: "#/components/responses/InternalError"
+  /part-reservations:
+    post:
+      summary: Reserve part item
+      x-roles: [scheduler, mechanic, admin]
+      x-scopes: [scheduler, mechanic, admin]
+      x-error-codes: [validation, auth, forbidden, not_found, conflict, internal]
+      parameters:
+        - $ref: "#/components/parameters/IdempotencyKey"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/PartReservationRequest"
+      responses:
+        "201":
+          description: Reserved
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/PartReservation"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "409":
+          $ref: "#/components/responses/Conflict"
+        "429":
+          $ref: "#/components/responses/TooManyRequests"
+        "500":
+          $ref: "#/components/responses/InternalError"
+  /part-reservations/{id}/state:
+    patch:
+      summary: Update reservation state
+      x-roles: [scheduler, mechanic, admin]
+      x-scopes: [scheduler, mechanic, admin]
+      x-error-codes: [validation, auth, forbidden, not_found, conflict, internal]
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ReservationStateRequest"
+      responses:
+        "200":
+          description: Updated
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/PartReservation"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "409":
+          $ref: "#/components/responses/Conflict"
+        "429":
+          $ref: "#/components/responses/TooManyRequests"
+        "500":
+          $ref: "#/components/responses/InternalError"
+  /compliance-items:
+    get:
+      summary: List compliance items
+      x-roles: [authenticated]
+      x-scopes: [authenticated]
+      x-error-codes: [validation, auth, internal]
+      parameters:
+        - name: org_id
+          in: query
+          schema:
+            type: string
+            format: uuid
+        - name: task_id
+          in: query
+          schema:
+            type: string
+            format: uuid
+        - name: result
+          in: query
+          schema:
+            type: string
+        - name: signed
+          in: query
+          schema:
+            type: boolean
+        - name: limit
+          in: query
+          schema:
+            type: integer
+        - name: offset
+          in: query
+          schema:
+            type: integer
+      responses:
+        "200":
+          description: Compliance items
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/ComplianceItem"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "429":
+          $ref: "#/components/responses/TooManyRequests"
+        "500":
+          $ref: "#/components/responses/InternalError"
+    post:
+      summary: Create compliance item
+      x-roles: [mechanic, admin]
+      x-scopes: [mechanic, admin]
+      x-error-codes: [validation, auth, forbidden, internal]
+      parameters:
+        - $ref: "#/components/parameters/IdempotencyKey"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ComplianceCreateRequest"
+      responses:
+        "201":
+          description: Created
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ComplianceItem"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "429":
+          $ref: "#/components/responses/TooManyRequests"
+        "500":
+          $ref: "#/components/responses/InternalError"
+  /compliance-items/{id}:
+    patch:
+      summary: Update compliance item
+      x-roles: [mechanic, admin]
+      x-scopes: [mechanic, admin]
+      x-error-codes: [validation, auth, forbidden, not_found, conflict, internal]
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ComplianceUpdateRequest"
+      responses:
+        "200":
+          description: Updated
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ComplianceItem"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "409":
+          $ref: "#/components/responses/Conflict"
+        "429":
+          $ref: "#/components/responses/TooManyRequests"
+        "500":
+          $ref: "#/components/responses/InternalError"
+  /compliance-items/{id}/sign-off:
+    patch:
+      summary: Sign off compliance item
+      x-roles: [mechanic]
+      x-scopes: [mechanic]
+      x-error-codes: [validation, auth, forbidden, not_found, conflict, internal]
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        "200":
+          description: Signed off
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ComplianceItem"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "409":
+          $ref: "#/components/responses/Conflict"
+        "429":
+          $ref: "#/components/responses/TooManyRequests"
+        "500":
+          $ref: "#/components/responses/InternalError"
+  /audit-logs:
+    get:
+      summary: List audit logs
+      x-roles: [authenticated]
+      x-scopes: [authenticated]
+      x-error-codes: [validation, auth, internal]
+      parameters:
+        - name: org_id
+          in: query
+          schema:
+            type: string
+            format: uuid
+        - name: entity_type
+          in: query
+          schema:
+            type: string
+        - name: entity_id
+          in: query
+          schema:
+            type: string
+            format: uuid
+        - name: user_id
+          in: query
+          schema:
+            type: string
+            format: uuid
+        - name: from
+          in: query
+          schema:
+            type: string
+            format: date-time
+        - name: to
+          in: query
+          schema:
+            type: string
+            format: date-time
+        - name: limit
+          in: query
+          schema:
+            type: integer
+        - name: offset
+          in: query
+          schema:
+            type: integer
+      responses:
+        "200":
+          description: Audit logs
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/AuditLog"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "429":
+          $ref: "#/components/responses/TooManyRequests"
+        "500":
+          $ref: "#/components/responses/InternalError"
+  /audit-logs/export:
+    get:
+      summary: Export audit logs as CSV
+      x-roles: [auditor, admin]
+      x-scopes: [auditor, admin]
+      x-error-codes: [validation, auth, forbidden, internal]
+      parameters:
+        - name: org_id
+          in: query
+          schema:
+            type: string
+            format: uuid
+        - name: entity_type
+          in: query
+          schema:
+            type: string
+        - name: entity_id
+          in: query
+          schema:
+            type: string
+            format: uuid
+        - name: user_id
+          in: query
+          schema:
+            type: string
+            format: uuid
+        - name: from
+          in: query
+          schema:
+            type: string
+            format: date-time
+        - name: to
+          in: query
+          schema:
+            type: string
+            format: date-time
+        - name: limit
+          in: query
+          schema:
+            type: integer
+        - name: offset
+          in: query
+          schema:
+            type: integer
+      responses:
+        "200":
+          description: CSV content
+          content:
+            text/csv:
+              schema:
+                type: string
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "429":
+          $ref: "#/components/responses/TooManyRequests"
+        "500":
+          $ref: "#/components/responses/InternalError"
+  /reports/summary:
+    get:
+      summary: Get summary report
+      x-roles: [authenticated]
+      x-scopes: [authenticated]
+      x-error-codes: [validation, auth, internal]
+      parameters:
+        - name: org_id
+          in: query
+          schema:
+            type: string
+            format: uuid
+      responses:
+        "200":
+          description: Summary report
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ReportSummary"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "429":
+          $ref: "#/components/responses/TooManyRequests"
+        "500":
+          $ref: "#/components/responses/InternalError"
+  /reports/compliance:
+    get:
+      summary: Get compliance report
+      x-roles: [auditor, admin]
+      x-scopes: [auditor, admin]
+      x-error-codes: [validation, auth, forbidden, internal]
+      parameters:
+        - name: org_id
+          in: query
+          schema:
+            type: string
+            format: uuid
+        - name: task_id
+          in: query
+          schema:
+            type: string
+            format: uuid
+        - name: result
+          in: query
+          schema:
+            type: string
+            enum: [pass, fail, pending]
+        - name: signed
+          in: query
+          schema:
+            type: boolean
+        - name: from
+          in: query
+          schema:
+            type: string
+            format: date-time
+        - name: to
+          in: query
+          schema:
+            type: string
+            format: date-time
+      responses:
+        "200":
+          description: Compliance report
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ComplianceReport"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "429":
+          $ref: "#/components/responses/TooManyRequests"
+        "500":
+          $ref: "#/components/responses/InternalError"
+security:
+  - bearerAuth: []

@@ -1,0 +1,32 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ include "amss.fullname" . }}-worker
+  labels:
+{{ include "amss.labels" . | indent 4 }}
+spec:
+  replicas: {{ .Values.worker.replicaCount }}
+  selector:
+    matchLabels:
+{{ include "amss.selectorLabels" . | indent 6 }}
+      component: worker
+  template:
+    metadata:
+      labels:
+{{ include "amss.selectorLabels" . | indent 8 }}
+        component: worker
+    spec:
+{{- if .Values.imagePullSecrets }}
+      imagePullSecrets:
+{{ toYaml .Values.imagePullSecrets | indent 8 }}
+{{- end }}
+      containers:
+        - name: worker
+          image: "{{ .Values.image.worker.repository }}:{{ default .Chart.AppVersion .Values.image.worker.tag }}"
+          imagePullPolicy: {{ .Values.image.worker.pullPolicy }}
+          command: ["/app/worker"]
+          envFrom:
+            - configMapRef:
+                name: {{ include "amss.fullname" . }}-config
+            - secretRef:
+                name: {{ include "amss.fullname" . }}-secret

@@ -1,0 +1,18 @@
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ include "amss.fullname" . }}-server
+  labels:
+{{ include "amss.labels" . | indent 4 }}
+spec:
+  type: {{ .Values.service.type }}
+  selector:
+{{ include "amss.selectorLabels" . | indent 4 }}
+    component: server
+  ports:
+    - name: http
+      port: {{ .Values.service.httpPort }}
+      targetPort: http
+    - name: grpc
+      port: {{ .Values.service.grpcPort }}
+      targetPort: grpc

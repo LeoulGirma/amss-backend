@@ -1,0 +1,700 @@
+You are Codex GPT 5.2. Build a production grade backend only Go project from this specification. Follow it exactly. Prefer correct, testable implementations over prose. Generate a complete repository with code, migrations, Docker Compose, CI, and documentation.
+
+Project
+Aircraft Maintenance Scheduling System AMSS
+
+Core idea
+A multi tenant backend for aviation Maintenance Repair and Overhaul operations. Tenants are airlines or MRO customers. The system schedules maintenance tasks with strict time windows, capacity constraints, compliance sign offs, traceable part usage, immutable audit logs, and regulated style retention policies.
+
+Constraints
+Go 1.22 or newer
+Backend only, no frontend
+Two binaries
+cmd server runs REST and gRPC servers
+cmd worker runs background jobs and communicates via gRPC where appropriate
+Postgres is primary data store
+Redis is cache, rate limiting, distributed locks, and Redis Streams
+Message broker is Redis Streams
+Migrations using Goose
+Observability using OpenTelemetry tracing, Prometheus metrics, structured logs
+Docker Compose for local dev
+GitHub Actions CI for lint, tests, build
+Integration tests with testcontainers go
+No exotic libraries. Use widely used packages only.
+
+High level architecture
+Use hexagonal or clean architecture. Keep business logic in domain layer with explicit invariants and state machines.
+Separate concerns:
+domain entities and rules
+application services orchestrating use cases
+infrastructure adapters for Postgres Redis Streams HTTP gRPC
+interfaces layer REST handlers and gRPC servers
+Use repository interfaces in domain or app layer with infra implementations.
+
+Multi tenancy hard rule
+All tenant scoped tables must include org_id.
+All tenant scoped queries must filter by org_id from auth context.
+Use composite foreign keys where possible to prevent cross tenant joins at DB level.
+Never accept org_id from client for tenant scoped operations unless admin is acting on behalf of a tenant, and still validate.
+
+Time handling hard rule
+Use timestamptz for all timestamps.
+Use tstzrange for time windows and capacity checks.
+All times are stored in UTC in DB.
+API accepts RFC3339 timestamps. Server normalizes to UTC.
+
+Postgres extensions
+Create migrations to enable:
+pgcrypto for gen_random_uuid
+btree_gist to support exclusion constraints with equality on uuid
+Also enable citext if you decide to treat emails case insensitively. If you do, use citext for user email.
+
+Soft deletes and uniqueness
+For soft deleted entities, allow reuse of unique fields if desired by using partial unique indexes where deleted_at is null.
+Apply this to:
+users org_id email
+aircraft org_id tail_number
+part_definitions org_id name
+part_items org_id serial_number
+
+Immutability enforcement
+audit_logs must be immutable. Enforce with a trigger that rejects update or delete.
+compliance_items must be immutable after sign off. Enforce with a trigger that rejects updates when sign_off_time is not null, except allow setting sign off fields once.
+
+Roles and RBAC
+Roles:
+admin system wide
+tenant_admin per org user and config management
+scheduler creates schedules and tasks and programs
+mechanic works tasks, uses parts, signs compliance
+auditor read only, exports and advanced filtering
+
+RBAC enforcement
+JWT includes org_id and role.
+Admin can operate across orgs.
+Non admin must only act within their org_id.
+Authorization checks:
+Organizations CRUD only admin. Tenant_admin can read and update own org metadata.
+Users CRUD admin or tenant_admin within org.
+Aircraft scheduler and mechanic can create update delete within org. Others read list.
+Maintenance tasks scheduler full CRUD. Mechanic read list and can update task progress via state transitions. Auditor read only.
+Parts definitions items reservations scheduler and mechanic CRUD. Auditor read only.
+Schedules implicitly via tasks. Scheduler controls. Others read only.
+Audit logs readable by all roles but immutable. Auditor can export.
+Reports all can generate basic. Auditor has advanced compliance filters.
+Maintenance programs scheduler CRUD. Auditor read list.
+Compliance items mechanic creates and updates until sign off, then immutable. Scheduler and auditor read list.
+
+Authentication
+Use JWT with RS256.
+Access token 15 minutes
+Refresh token 7 days, rotating
+Store refresh tokens in DB with hashing to allow revoke and rotation.
+JWT claims:
+sub user_id
+org_id tenant id
+role
+scopes optional list
+exp iat jti
+Add request correlation id per request, generate UUID if missing.
+
+Security basics
+Use bcrypt for password hashing.
+Rate limit login attempts per IP and per email.
+Use constant time compare for sensitive comparisons.
+Validate inputs with go-playground validator and custom validators for enums.
+Use prepared statements via pgx.
+Add CSRF not needed since no browser session.
+Add CORS optional off by default.
+
+Core domain entities
+1 Organization
+id uuid pk
+name text unique
+created_at updated_at deleted_at
+
+2 User
+id uuid pk
+org_id uuid fk to organizations
+email citext or text
+role enum
+password_hash text
+last_login timestamptz
+created_at updated_at deleted_at
+Unique org_id email where deleted_at is null
+
+3 Aircraft
+id uuid pk
+org_id uuid fk
+tail_number text
+model text
+last_maintenance timestamptz
+next_due timestamptz with check next_due greater than last_maintenance if both not null
+status enum operational maintenance grounded
+capacity_slots int greater than 0
+created_at updated_at deleted_at
+Unique org_id tail_number where deleted_at is null
+
+4 MaintenanceTask
+id uuid pk
+org_id uuid fk
+aircraft_id uuid
+program_id uuid nullable
+type enum inspection repair overhaul
+state enum scheduled in_progress completed cancelled
+start_time timestamptz
+end_time timestamptz
+assigned_mechanic_id uuid nullable
+notes text
+created_at updated_at deleted_at
+Composite fk (org_id, aircraft_id) references aircraft(org_id, id)
+Composite fk (org_id, program_id) references maintenance_programs(org_id, id) nullable
+Composite fk (org_id, assigned_mechanic_id) references users(org_id, id) nullable
+Check end_time greater than start_time
+
+Capacity enforcement design
+Implement an exclusion constraint that prevents overlapping active tasks for the same aircraft.
+Use a generated stored column active_window as tstzrange:
+active_window = CASE WHEN state IN ('scheduled','in_progress') AND deleted_at IS NULL THEN tstzrange(start_time, end_time, '[)') ELSE NULL END
+Then add exclusion constraint:
+EXCLUDE USING GIST (org_id WITH =, aircraft_id WITH =, active_window WITH &&)
+Because active_window is null for non active tasks and for deleted tasks, those rows do not participate in conflicts.
+Requires btree_gist extension.
+Also keep a defensive application layer check to return a friendly 409 error when exclusion fails.
+
+5 PartDefinition
+id uuid pk
+org_id uuid fk
+name text
+category text
+created_at updated_at deleted_at
+Unique org_id name where deleted_at is null
+
+6 PartItem
+id uuid pk
+org_id uuid fk
+part_definition_id uuid
+serial_number text
+status enum in_stock used disposed
+expiry_date timestamptz nullable
+created_at updated_at deleted_at
+Composite fk (org_id, part_definition_id) references part_definitions(org_id, id)
+Unique org_id serial_number where deleted_at is null
+Check expiry_date is null or expiry_date greater than now at insert time. Also revalidate on updates.
+
+7 PartReservation
+id uuid pk
+org_id uuid fk
+task_id uuid
+part_item_id uuid
+state enum reserved used released
+quantity int default 1
+created_at updated_at
+Composite fk (org_id, task_id) references maintenance_tasks(org_id, id)
+Composite fk (org_id, part_item_id) references part_items(org_id, id)
+Rules:
+Only reserve parts in in_stock state
+When reservation state becomes used, set part_item status to used
+When reservation released, part_item stays in_stock unless other reservations exist
+Use distributed lock in Redis on part_item_id to avoid double reserve.
+Also enforce in DB with unique partial index:
+unique on (org_id, part_item_id) where state = 'reserved'
+This prevents concurrent reservations even if locks fail.
+
+8 MaintenanceProgram
+id uuid pk
+org_id uuid fk
+aircraft_id uuid nullable for template
+name text
+interval_type enum flight_hours cycles calendar
+interval_value int greater than 0
+last_performed timestamptz nullable
+created_at updated_at deleted_at
+Composite fk (org_id, aircraft_id) references aircraft(org_id, id) nullable
+Rules:
+For calendar type, interval_value is days
+For cycles and flight_hours, store interval_value and expect external ingestion later. For this project implement a simple placeholder usage counter on aircraft if needed.
+
+9 ComplianceItem
+id uuid pk
+org_id uuid fk
+task_id uuid
+description text
+result enum pass fail pending
+sign_off_user_id uuid nullable
+sign_off_time timestamptz nullable
+created_at updated_at deleted_at
+Composite fk (org_id, task_id) references maintenance_tasks(org_id, id)
+Composite fk (org_id, sign_off_user_id) references users(org_id, id) nullable
+Rules:
+Task completion requires all compliance items to be signed off and result not pending
+Sign off only allowed by mechanic role
+After sign off, item becomes immutable
+
+10 AuditLog
+id uuid pk
+org_id uuid fk
+entity_type text
+entity_id uuid
+action enum create update delete state_change
+user_id uuid
+request_id uuid
+ip_address text
+user_agent text
+entity_version int default 0
+timestamp timestamptz default now
+details jsonb
+Composite fk (org_id, user_id) references users(org_id, id)
+Immutable trigger prevents update and delete
+
+11 OutboxEvent
+id uuid pk
+org_id uuid fk
+aggregate_type text
+aggregate_id uuid
+event_type text
+payload jsonb
+dedupe_key text
+attempt_count int default 0
+last_error text
+next_attempt_at timestamptz default now
+locked_at timestamptz nullable
+locked_by text nullable
+created_at timestamptz default now
+processed_at timestamptz nullable
+Unique org_id dedupe_key
+Indexes on org_id processed_at nulls first, org_id next_attempt_at
+
+12 IdempotencyKey
+id uuid pk
+org_id uuid fk
+key text
+endpoint text
+request_hash text
+response_body jsonb
+status_code int
+created_at timestamptz default now
+expires_at timestamptz
+Unique org_id key endpoint
+Index expires_at
+Rules:
+Middleware checks existing entry. If found and not expired, return stored response_body with status_code.
+If not found, create placeholder row with status_code 0 in a transaction or use insert then update after handler.
+Request_hash prevents key reuse with different payload. If mismatch, return 409.
+
+13 Webhook
+id uuid pk
+org_id uuid fk
+url text
+events text array
+secret text
+created_at updated_at
+Rules:
+Secret is generated server side random 32 bytes hex.
+Validate url is https in production. For local allow http.
+
+14 WebhookDelivery
+id uuid pk
+org_id uuid fk
+webhook_id uuid
+event_id uuid
+attempt_count int default 0
+last_error text
+next_attempt_at timestamptz default now
+status enum pending delivered failed
+last_response_code int nullable
+last_response_body text nullable limited length
+created_at updated_at
+Composite fk (org_id, webhook_id) references webhooks(org_id, id)
+Composite fk (org_id, event_id) references outbox(org_id, id)
+Index on org_id next_attempt_at for dispatch loops.
+
+15 Import
+id uuid pk
+org_id uuid fk
+type enum aircraft parts programs
+status enum pending validating applying completed failed
+file_name text
+created_by uuid
+created_at updated_at
+summary jsonb includes counts applied rejected
+Composite fk (org_id, created_by) references users(org_id, id)
+
+16 ImportRow
+id uuid pk
+org_id uuid fk
+import_id uuid
+row_number int
+raw jsonb
+status enum pending valid invalid applied
+errors jsonb array of error strings
+created_at updated_at
+Composite fk (org_id, import_id) references imports(org_id, id)
+Index org_id import_id row_number
+
+17 OrgPolicy
+org_id uuid pk fk to organizations
+retention_interval interval for soft deleted operational data
+max_webhook_attempts int default 10
+webhook_replay_window_seconds int default 300
+api_rate_limit_per_min int default 100
+api_key_rate_limit_per_min int default 10
+created_at updated_at
+
+Domain workflows and invariants
+MaintenanceTask state machine
+scheduled to in_progress to completed or cancelled
+Rules:
+scheduled to in_progress
+current time within start_time minus 5 minutes grace
+aircraft status must be grounded
+assigned mechanic exists
+no capacity overlap enforced by exclusion constraint
+required parts reserved if required by task type optional
+in_progress to completed
+now must be at or after end_time or allow early completion with scheduler override
+all part reservations for task must be used or released and required ones used
+all compliance items signed off and result not pending
+notes must be present
+any to cancelled
+only scheduler or admin
+must be before start_time plus 24 hours window or require admin override
+on cancel release reservations
+completed is final no rollback, corrections require new task linked via reference id in notes
+
+Aircraft status workflow
+operational to grounded when a scheduled task is approaching and confirmed
+grounded to operational when no active tasks exist for aircraft
+This can be driven by application logic when tasks change state.
+
+PartReservation state machine
+reserved to used
+only mechanic on the assigned task or scheduler can mark used
+used sets part item status to used
+reserved to released
+scheduler or mechanic can release before use
+released keeps part item in_stock
+Ensure only one active reservation per part item via unique partial index.
+
+MaintenanceProgram task generation
+Worker job runs every 6 hours.
+For calendar programs
+if last_performed is null, schedule first task at next_due or now plus lead time
+if last_performed exists and now is beyond last_performed plus interval days, create a new scheduled task
+For cycles and flight_hours
+Include placeholder counters on aircraft:
+flight_hours_total int
+cycles_total int
+Ingest endpoints optional. Or for MVP, keep only calendar type fully implemented and stub others with clear TODOs.
+
+Events and outbox
+When business actions occur, insert outbox events in the same DB transaction.
+Event types:
+task_created
+task_state_changed
+part_reserved
+aircraft_status_updated
+compliance_signed
+program_task_generated
+audit_logged
+Each payload includes version 1, org_id, ids, timestamps.
+dedupe_key format should be stable and unique per effect, like:
+task_created:{org_id}:{task_id}
+task_state_changed:{org_id}:{task_id}:{new_state}:{version_counter}
+Use a version counter on tasks if needed.
+
+Outbox processing
+Worker polls with:
+SELECT ... FROM outbox
+WHERE processed_at IS NULL AND next_attempt_at <= now()
+ORDER BY created_at
+LIMIT N
+FOR UPDATE SKIP LOCKED
+Set locked_at and locked_by in the same transaction and commit.
+Publish to Redis Streams.
+On success set processed_at, clear lock.
+On failure increment attempt_count, set last_error, compute next_attempt_at with exponential backoff capped at 1 hour.
+After max attempts move event to DLQ stream and mark processed_at or mark status failed. Keep record.
+
+Redis Streams design
+Stream name amss.events
+Consumer group amss.workers
+Message includes event_type and payload json
+DLQ stream amss.dlq
+
+Webhooks design
+Subscription per org.
+When outbox event is processed successfully, create webhook_deliveries rows for each webhook subscribed to that event_type.
+Dispatcher job queries webhook_deliveries where status pending and next_attempt_at <= now with SKIP LOCKED.
+Signing:
+Compute raw_body bytes of JSON payload.
+timestamp is unix milliseconds string.
+signature = hex(hmac_sha256(secret, timestamp + "." + raw_body))
+Headers:
+X-Webhook-Timestamp
+X-Webhook-Signature: v1=signature
+Also send X-Webhook-Event and X-Webhook-Delivery-Id
+Receiver replay protection window default 5 minutes per org policy. Document it.
+On non 2xx and not 429, treat as failure and retry with backoff.
+On 429 respect Retry-After if present, else backoff.
+After max attempts set status failed and push a message to DLQ stream.
+
+Idempotency
+Apply to all POST that create resources and to state transition endpoints.
+Client sends Idempotency-Key header.
+Compute request_hash from method, path, and normalized body.
+If existing key with different hash return 409.
+If existing key with stored response return it.
+If placeholder in progress return 409 conflict with retry_after_seconds or 202 for async endpoints.
+
+Rate limiting
+Two layers:
+Per tenant org_id per minute per endpoint category
+Per api key per minute if api keys are supported. Optional.
+Implement with Redis using sliding window or token bucket.
+Return 429 with Retry-After.
+
+CSV import pipeline
+Endpoint POST /imports/csv
+Multipart upload
+Type parameter indicates aircraft parts programs
+Create Import row status pending
+Store file bytes either in memory for MVP or write to local disk volume and store path.
+Enqueue job via Redis Stream import.jobs with import_id
+Worker picks job:
+set import status validating
+parse CSV
+for each row create ImportRow with raw json, validate fields, set status valid or invalid with errors
+if any invalid and policy requires, stop or continue. Choose continue and allow partial apply.
+set import status applying
+for each valid row apply using upsert rules and idempotency at row level, update ImportRow to applied or invalid if apply fails
+set import status completed with summary counts
+If job crashes, resume by status and row states.
+
+REST API
+Base /api/v1
+JSON content type application json
+Error format:
+{
+  "error": "human readable message",
+  "code": "SOME_CODE",
+  "request_id": "uuid"
+}
+Use consistent codes for auth forbidden validation conflict not_found.
+
+Auth endpoints
+POST /auth/login
+POST /auth/refresh
+POST /auth/logout optional to revoke refresh
+Admin may create users via API.
+
+Organizations
+POST /organizations admin only idempotent
+GET /organizations/{id}
+GET /organizations list admin only
+PATCH /organizations/{id} admin or tenant_admin for own
+
+Users
+POST /users admin or tenant_admin within org
+GET /users list
+GET /users/{id}
+PATCH /users/{id}
+DELETE /users/{id} soft delete
+
+Aircraft
+POST /aircraft
+GET /aircraft list with pagination filtering sorting
+GET /aircraft/{id}
+PATCH /aircraft/{id}
+DELETE /aircraft/{id}
+
+Maintenance programs
+POST /maintenance-programs
+GET /maintenance-programs list
+GET /maintenance-programs/{id}
+PATCH /maintenance-programs/{id}
+DELETE /maintenance-programs/{id}
+
+Maintenance tasks
+POST /maintenance-tasks idempotent
+GET /maintenance-tasks list with filters: aircraft_id, state, type, start_from, start_to
+GET /maintenance-tasks/{id} includes reservations and compliance items
+PATCH /maintenance-tasks/{id} updates non state fields allowed scheduler only
+PATCH /maintenance-tasks/{id}/state state transition idempotent
+On conflict from exclusion constraint return 409 with message about overlap.
+
+Parts
+POST /part-definitions
+GET /part-definitions list
+POST /part-items
+GET /part-items list filters by status, definition_id, expiry_before
+PATCH /part-items/{id} limited updates
+POST /part-reservations reserve part item for task with Redis lock and DB constraints
+PATCH /part-reservations/{id}/state to used or released
+
+Compliance
+POST /compliance-items create for task
+GET /compliance-items list filter by task_id result signed
+PATCH /compliance-items/{id} update before sign off
+PATCH /compliance-items/{id}/sign-off mechanic only sets sign_off_user_id and sign_off_time, then immutable
+
+Imports
+POST /imports/csv returns 202 and import_id
+GET /imports/{id} returns status and summary
+GET /imports/{id}/rows paginate invalid rows with errors
+
+Webhooks
+POST /webhooks subscribe returns secret once
+GET /webhooks list
+DELETE /webhooks/{id}
+POST /webhooks/{id}/test sends a test event through deliveries pipeline
+
+Audit logs
+GET /audit-logs list with filters entity_type entity_id user_id time range
+Export endpoint optional: GET /audit-logs/export returns CSV for auditor
+
+Health
+GET /health quick liveness
+GET /ready checks DB and Redis connectivity and returns 503 if not ready
+GET /metrics Prometheus
+
+gRPC APIs
+Define proto api/proto/amss.proto
+Services:
+TaskService CreateTask TransitionState
+InventoryService ReserveParts ReleaseParts
+AuditService LogAction
+ProgramService GenerateTasks
+Use interceptors for auth tracing request_id.
+Worker may call ProgramService GenerateTasks and TaskService CreateTask for batch generation.
+
+Implementation details
+HTTP router: chi
+DB: pgxpool
+Redis: go-redis
+Migrations: goose
+Validation: validator v10
+JWT: golang-jwt v5
+Logging: zerolog
+OTEL: otel sdk with http and grpc instrumentation and pgx instrumentation if available
+Metrics: prometheus client golang
+Cron: robfig cron v3
+Testing: testify, testcontainers go
+
+Observability
+Logging
+JSON logs include request_id org_id user_id route method status duration
+Tracing
+Create traces for HTTP and gRPC
+Add spans for DB operations and worker jobs
+Metrics
+requests_total labeled by route method status
+request_duration_seconds histogram by route
+job_runs_total and job_failures_total by job
+outbox_events_processed_total and outbox_events_failed_total
+webhook_deliveries_total by status
+Rate limit rejections counter
+
+Configuration
+Use environment variables with validation at startup.
+Examples:
+APP_ENV
+HTTP_ADDR
+GRPC_ADDR
+DB_URL
+REDIS_ADDR
+JWT_PRIVATE_KEY_PEM
+JWT_PUBLIC_KEY_PEM
+ACCESS_TOKEN_TTL
+REFRESH_TOKEN_TTL
+OTEL_EXPORTER_OTLP_ENDPOINT optional
+PROMETHEUS_ENABLED
+LOG_LEVEL
+CORS_ALLOWED_ORIGINS optional
+WORKER_ID string unique per worker
+
+Docker Compose
+Services:
+postgres
+redis
+jaeger or otel collector optional
+prometheus
+server
+worker
+Expose ports:
+server 8080
+grpc 9090
+postgres 5432
+redis 6379
+jaeger 16686
+prometheus 9091 or 9090 if not conflicting
+Use volumes for postgres data.
+
+CI
+GitHub Actions workflow:
+go test ./...
+golangci-lint run
+go test with race if possible
+build both binaries
+Optionally build docker images
+
+Makefile
+make dev up
+make dev down
+make migrate up
+make test
+make lint
+make seed
+
+Seed data
+Provide a command or SQL seed:
+Create one org
+Create users for each role
+Create aircraft
+Create program and tasks
+This helps demo quickly.
+
+Repo structure required
+go.mod
+cmd/server/main.go
+cmd/worker/main.go
+internal/config
+internal/domain entities and state machines
+internal/app services use cases
+internal/infra/postgres repositories
+internal/infra/redis cache and locks
+internal/infra/streams redis streams publisher consumer
+internal/api/rest handlers middleware
+internal/api/grpc servers interceptors
+internal/jobs outbox poller webhook dispatcher program generator import processor retention cleaner
+pkg/auth jwt and refresh token logic
+pkg/observability otel prom logger
+api/proto/amss.proto and generated code
+migrations goose sql
+tests unit and integration
+docker-compose.yml
+.github/workflows/ci.yml
+README.md
+
+Acceptance criteria
+1 Multi tenant isolation proven by tests
+2 Capacity overlap prevented by exclusion constraint, with friendly 409 on conflict
+3 Idempotency returns exact same response on repeat
+4 Outbox processes events reliably and uses SKIP LOCKED
+5 Webhooks sign correctly and retries work with backoff
+6 CSV import stages rows and applies asynchronously with visible row errors
+7 Audit logs are written for every mutation and cannot be updated or deleted
+8 Observability endpoints and instrumentation present
+9 Integration tests cover DB and Redis behavior using testcontainers
+10 Project runs locally with docker compose and README instructions.
+
+Start output requirements
+When generating the repo, output in this order:
+1 file tree
+2 go.mod
+3 docker-compose.yml
+4 migrations including extensions and core tables and constraints
+5 server and worker main scaffolding with config
+Then implement milestone by milestone with complete code for critical files.
+
+Do not leave TODO for core requirements. If something is optional, clearly mark it optional and still provide a working stub that does not break acceptance criteria.

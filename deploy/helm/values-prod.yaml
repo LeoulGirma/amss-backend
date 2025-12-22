@@ -1,0 +1,13 @@
+config:
+  appEnv: "production"
+  redisAddr: "51.79.85.92:6379"
+  prometheusEnabled: "false"
+
+ingress:
+  enabled: true
+  className: nginx
+  hosts:
+    - host: amss-api.duckdns.org
+      paths:
+        - path: /
+          pathType: Prefix

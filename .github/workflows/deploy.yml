@@ -1,0 +1,123 @@
+name: Deploy
+
+on:
+  push:
+    branches:
+      - main
+  workflow_dispatch:
+    inputs:
+      environment:
+        description: Deployment environment
+        type: choice
+        required: true
+        options:
+          - uat
+          - prod
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    outputs:
+      image_tag: ${{ steps.meta.outputs.image_tag }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+          cache: true
+      - name: Run unit tests
+        run: go test ./...
+      - name: Set image tag
+        id: meta
+        run: echo "image_tag=${GITHUB_SHA}" >> $GITHUB_OUTPUT
+      - name: Login to Docker Hub
+        uses: docker/login-action@v3
+        with:
+          username: ${{ secrets.DOCKERHUB_USERNAME }}
+          password: ${{ secrets.DOCKERHUB_TOKEN }}
+      - name: Build and push server image
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: Dockerfile
+          push: true
+          tags: |
+            leoulgirma/amss-server:${{ steps.meta.outputs.image_tag }}
+            leoulgirma/amss-server:latest
+      - name: Build and push worker image
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: Dockerfile
+          push: true
+          tags: |
+            leoulgirma/amss-worker:${{ steps.meta.outputs.image_tag }}
+            leoulgirma/amss-worker:latest
+
+  deploy-uat:
+    if: github.event_name == 'push' || github.event.inputs.environment == 'uat'
+    needs: build
+    runs-on: ubuntu-latest
+    environment: uat
+    steps:
+      - uses: actions/checkout@v4
+      - uses: azure/setup-helm@v4
+        with:
+          version: v3.15.2
+      - name: Configure kubeconfig
+        run: |
+          mkdir -p $HOME/.kube
+          echo "${{ secrets.KUBE_CONFIG_DATA }}" | base64 -d > $HOME/.kube/config
+      - name: Ensure namespace
+        run: kubectl create namespace amss-uat --dry-run=client -o yaml | kubectl apply -f -
+      - name: Ensure registry secret
+        run: |
+          kubectl -n amss-uat create secret docker-registry amss-registry \
+            --docker-username="${{ secrets.DOCKERHUB_USERNAME }}" \
+            --docker-password="${{ secrets.DOCKERHUB_TOKEN }}" \
+            --docker-email="devnull@example.com" \
+            --dry-run=client -o yaml | kubectl apply -f -
+      - name: Deploy to UAT
+        run: |
+          helm upgrade --install amss deploy/helm/amss \
+            -n amss-uat \
+            -f deploy/helm/values-uat.yaml \
+            --set image.server.tag=${{ needs.build.outputs.image_tag }} \
+            --set image.worker.tag=${{ needs.build.outputs.image_tag }} \
+            --set-string secrets.dbUrl="${{ secrets.UAT_DB_URL }}" \
+            --set-string secrets.jwtPrivateKeyPem="${{ secrets.UAT_JWT_PRIVATE_KEY_PEM }}" \
+            --set-string secrets.jwtPublicKeyPem="${{ secrets.UAT_JWT_PUBLIC_KEY_PEM }}"
+
+  deploy-prod:
+    if: github.event_name == 'workflow_dispatch' && github.event.inputs.environment == 'prod'
+    needs: build
+    runs-on: ubuntu-latest
+    environment: prod
+    steps:
+      - uses: actions/checkout@v4
+      - uses: azure/setup-helm@v4
+        with:
+          version: v3.15.2
+      - name: Configure kubeconfig
+        run: |
+          mkdir -p $HOME/.kube
+          echo "${{ secrets.KUBE_CONFIG_DATA }}" | base64 -d > $HOME/.kube/config
+      - name: Ensure namespace
+        run: kubectl create namespace amss-prod --dry-run=client -o yaml | kubectl apply -f -
+      - name: Ensure registry secret
+        run: |
+          kubectl -n amss-prod create secret docker-registry amss-registry \
+            --docker-username="${{ secrets.DOCKERHUB_USERNAME }}" \
+            --docker-password="${{ secrets.DOCKERHUB_TOKEN }}" \
+            --docker-email="devnull@example.com" \
+            --dry-run=client -o yaml | kubectl apply -f -
+      - name: Deploy to Prod
+        run: |
+          helm upgrade --install amss deploy/helm/amss \
+            -n amss-prod \
+            -f deploy/helm/values-prod.yaml \
+            --set image.server.tag=${{ needs.build.outputs.image_tag }} \
+            --set image.worker.tag=${{ needs.build.outputs.image_tag }} \
+            --set-string secrets.dbUrl="${{ secrets.PROD_DB_URL }}" \
+            --set-string secrets.jwtPrivateKeyPem="${{ secrets.PROD_JWT_PRIVATE_KEY_PEM }}" \
+            --set-string secrets.jwtPublicKeyPem="${{ secrets.PROD_JWT_PUBLIC_KEY_PEM }}"

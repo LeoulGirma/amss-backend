@@ -1,0 +1,56 @@
+nameOverride: ""
+fullnameOverride: ""
+
+image:
+  server:
+    repository: leoulgirma/amss-server
+    tag: ""
+    pullPolicy: IfNotPresent
+  worker:
+    repository: leoulgirma/amss-worker
+    tag: ""
+    pullPolicy: IfNotPresent
+
+imagePullSecrets:
+  - name: amss-registry
+
+server:
+  replicaCount: 1
+
+worker:
+  replicaCount: 1
+
+service:
+  type: ClusterIP
+  httpPort: 8080
+  grpcPort: 9090
+
+config:
+  appEnv: "production"
+  httpAddr: ":8080"
+  grpcAddr: ":9090"
+  redisAddr: "51.79.85.92:6379"
+  importStorageDir: "/data/imports"
+  accessTokenTtl: "15m"
+  refreshTokenTtl: "168h"
+  otlpEndpoint: ""
+  prometheusEnabled: "false"
+  logLevel: "info"
+  corsAllowedOrigins: ""
+  workerId: "worker-1"
+  retentionCleanupInterval: "24h"
+
+secrets:
+  dbUrl: ""
+  jwtPrivateKeyPem: ""
+  jwtPublicKeyPem: ""
+
+ingress:
+  enabled: true
+  className: nginx
+  annotations: {}
+  hosts:
+    - host: amss-api.duckdns.org
+      paths:
+        - path: /
+          pathType: Prefix
