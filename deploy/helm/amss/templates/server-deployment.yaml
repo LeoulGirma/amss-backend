@@ -29,6 +29,8 @@ spec:
               containerPort: {{ .Values.service.httpPort }}
             - name: grpc
               containerPort: {{ .Values.service.grpcPort }}
+          resources:
+{{ toYaml .Values.server.resources | indent 12 }}
           envFrom:
             - configMapRef:
                 name: {{ include "amss.fullname" . }}-config

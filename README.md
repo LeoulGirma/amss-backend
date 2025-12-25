@@ -150,6 +150,15 @@ Alternatively:
 make test-integration
 ```
 
+## 📚 Documentation
+
+**New to AMSS?** Start here:
+
+- **[Developer Onboarding Guide](docs/DEVELOPER_GUIDE.md)** - Complete system overview, architecture deep-dive, user journeys, and development workflows
+- **[API & User Guide](docs/API_GUIDE.md)** - REST API reference, authentication, workflows, webhooks, and best practices
+- **[Failure Modes & Recovery](docs/FAILURE_MODES.md)** - What happens when things fail, recovery procedures, backup/restore, disaster recovery
+- **[Architecture Diagrams](docs/architecture-diagrams.md)** - System architecture and component interactions
+
 ## Repo layout (high level)
 - `cmd/` entrypoints (`server`, `worker`)
 - `internal/api/` REST + gRPC handlers and middleware
@@ -158,7 +167,7 @@ make test-integration
 - `internal/jobs/` async workers
 - `migrations/` SQL migrations
 - `api/proto/` gRPC proto and generated code
-- `docs/` diagrams and design notes
+- `docs/` comprehensive guides, diagrams, and design notes
 
 ## Deployment (Helm + GitHub Actions)
 Helm chart and environment values:

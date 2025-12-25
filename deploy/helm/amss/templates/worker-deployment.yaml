@@ -25,6 +25,8 @@ spec:
           image: "{{ .Values.image.worker.repository }}:{{ default .Chart.AppVersion .Values.image.worker.tag }}"
           imagePullPolicy: {{ .Values.image.worker.pullPolicy }}
           command: ["/app/worker"]
+          resources:
+{{ toYaml .Values.worker.resources | indent 12 }}
           envFrom:
             - configMapRef:
                 name: {{ include "amss.fullname" . }}-config
