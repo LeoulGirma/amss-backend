@@ -321,7 +321,21 @@ make test-integration
 
 ## 📚 Documentation
 
-**New to AMSS?** Start here:
+### User Guides
+
+**New to AMSS?** Start with the role-specific user guides:
+
+- **[Orientation Guide](docs/USER_GUIDES/00_ORIENTATION.md)** - Getting started with AMSS for all users
+- **[System Administrator Guide](docs/USER_GUIDES/01_SYSTEM_ADMINISTRATOR.md)** - Multi-tenant setup, user management, system health monitoring, and troubleshooting
+- **[Maintenance Planner Guide](docs/USER_GUIDES/02_MAINTENANCE_PLANNER.md)** - Creating programs, scheduling tasks, assigning work, and managing the maintenance lifecycle
+- **[Mechanic/Technician Guide](docs/USER_GUIDES/03_MECHANIC_TECHNICIAN.md)** - Executing tasks, managing parts, compliance sign-offs, and return to service
+- **[Compliance Officer Guide](docs/USER_GUIDES/04_COMPLIANCE_OFFICER.md)** - Generating audit reports, reviewing logs, and ensuring FAA/EASA regulatory compliance
+- **[Fleet Manager Guide](docs/USER_GUIDES/05_FLEET_MANAGER.md)** - Fleet dashboards, bulk operations, cost analysis, and webhook integrations
+- **[Quick Reference Guide](docs/USER_GUIDES/06_QUICK_REFERENCE.md)** - Glossary, cheat sheets, troubleshooting, and FAQs for all roles
+
+### Developer Resources
+
+**For developers and integrators:**
 
 - **[Developer Onboarding Guide](docs/DEVELOPER_GUIDE.md)** - Complete system overview, architecture deep-dive, user journeys, and development workflows
 - **[API & User Guide](docs/API_GUIDE.md)** - REST API reference, authentication, workflows, webhooks, and best practices
