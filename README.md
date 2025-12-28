@@ -341,6 +341,7 @@ make test-integration
 - **[API & User Guide](docs/API_GUIDE.md)** - REST API reference, authentication, workflows, webhooks, and best practices
 - **[Failure Modes & Recovery](docs/FAILURE_MODES.md)** - What happens when things fail, recovery procedures, backup/restore, disaster recovery
 - **[Architecture Diagrams](docs/architecture-diagrams.md)** - System architecture and component interactions
+- **[UI/UX Specification](docs/UI_UX/00_INDEX.md)** - Frontend design system, screens, components, accessibility, and aviation standards
 
 ## Repo layout (high level)
 - `cmd/` entrypoints (`server`, `worker`)
