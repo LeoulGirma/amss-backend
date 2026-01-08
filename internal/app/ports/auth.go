@@ -14,12 +14,23 @@ type AuthUser struct {
 	Email        string
 	Role         domain.Role
 	PasswordHash string
+	LastLogin    *time.Time
+	CreatedAt    time.Time
+	UpdatedAt    time.Time
 	DeletedAt    *time.Time
+}
+
+// OrgInfo contains organization details for email lookup
+type OrgInfo struct {
+	OrgID   uuid.UUID
+	OrgName string
 }
 
 type AuthRepository interface {
 	GetUserByEmail(ctx context.Context, orgID uuid.UUID, email string) (AuthUser, error)
+	GetUserByID(ctx context.Context, orgID uuid.UUID, userID uuid.UUID) (AuthUser, error)
 	UpdateLastLogin(ctx context.Context, orgID, userID uuid.UUID, at time.Time) error
+	LookupOrgsByEmail(ctx context.Context, email string) ([]OrgInfo, error)
 }
 
 type RefreshToken struct {

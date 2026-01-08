@@ -53,7 +53,7 @@ func (s *TaskService) Create(ctx context.Context, actor app.Actor, input TaskCre
 	if s.Clock == nil {
 		s.Clock = app.RealClock{}
 	}
-	if actor.Role != domain.RoleScheduler && actor.Role != domain.RoleAdmin {
+	if actor.Role != domain.RoleScheduler && actor.Role != domain.RoleAdmin && actor.Role != domain.RoleTenantAdmin {
 		return domain.MaintenanceTask{}, domain.ErrForbidden
 	}
 	orgID := actor.OrgID
@@ -108,7 +108,7 @@ func (s *TaskService) Update(ctx context.Context, actor app.Actor, orgID uuid.UU
 	if s.Clock == nil {
 		s.Clock = app.RealClock{}
 	}
-	if actor.Role != domain.RoleScheduler && actor.Role != domain.RoleAdmin {
+	if actor.Role != domain.RoleScheduler && actor.Role != domain.RoleAdmin && actor.Role != domain.RoleTenantAdmin {
 		return domain.MaintenanceTask{}, domain.ErrForbidden
 	}
 	if !actor.IsAdmin() && actor.OrgID != orgID {
@@ -156,7 +156,7 @@ func (s *TaskService) Delete(ctx context.Context, actor app.Actor, orgID uuid.UU
 	if s.Clock == nil {
 		s.Clock = app.RealClock{}
 	}
-	if actor.Role != domain.RoleScheduler && actor.Role != domain.RoleAdmin {
+	if actor.Role != domain.RoleScheduler && actor.Role != domain.RoleAdmin && actor.Role != domain.RoleTenantAdmin {
 		return domain.ErrForbidden
 	}
 	if !actor.IsAdmin() && actor.OrgID != orgID {

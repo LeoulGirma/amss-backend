@@ -9,6 +9,8 @@ data:
   HTTP_ADDR: {{ .Values.config.httpAddr | quote }}
   GRPC_ADDR: {{ .Values.config.grpcAddr | quote }}
   REDIS_ADDR: {{ .Values.config.redisAddr | quote }}
+  REDIS_SENTINELS: {{ .Values.config.redisSentinels | quote }}
+  REDIS_SENTINEL_MASTER: {{ .Values.config.redisSentinelMaster | quote }}
   IMPORT_STORAGE_DIR: {{ .Values.config.importStorageDir | quote }}
   ACCESS_TOKEN_TTL: {{ .Values.config.accessTokenTtl | quote }}
   REFRESH_TOKEN_TTL: {{ .Values.config.refreshTokenTtl | quote }}

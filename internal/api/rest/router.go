@@ -22,7 +22,11 @@ import (
 	postgresinfra "github.com/aeromaintain/amss/internal/infra/postgres"
 	redisinfra "github.com/aeromaintain/amss/internal/infra/redis"
 	"github.com/aeromaintain/amss/internal/infra/streams"
+	"github.com/aeromaintain/amss/internal/infra/ws"
 )
+
+// Global WebSocket hub - exported so it can be used for broadcasting
+var WSHub *ws.Hub
 
 type Deps struct {
 	Logger             zerolog.Logger
@@ -41,11 +45,17 @@ type Deps struct {
 func NewRouter(deps Deps) http.Handler {
 	r := chi.NewRouter()
 	r.Use(middleware.Recoverer)
+
+	// Initialize WebSocket hub
+	WSHub = ws.NewHub(deps.Logger)
+	go WSHub.Run()
+	wsHandler := &ws.Handler{Hub: WSHub}
+
 	if len(deps.CorsAllowedOrigins) > 0 {
 		r.Use(cors.Handler(cors.Options{
 			AllowedOrigins:   deps.CorsAllowedOrigins,
 			AllowedMethods:   []string{"GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"},
-			AllowedHeaders:   []string{"Accept", "Authorization", "Content-Type", "Idempotency-Key", "X-API-Key", "X-Request-ID"},
+			AllowedHeaders:   []string{"Accept", "Authorization", "Content-Type", "Idempotency-Key", "X-API-Key", "X-Request-ID", "Sec-CH-UA", "Sec-CH-UA-Mobile", "Sec-CH-UA-Platform"},
 			ExposedHeaders:   []string{"X-RateLimit-Remaining", "X-RateLimit-Reset", "Retry-After"},
 			AllowCredentials: false,
 			MaxAge:           300,
@@ -128,8 +138,9 @@ func NewRouter(deps Deps) http.Handler {
 			Reports: &postgresinfra.ReportRepository{DB: deps.DB},
 		}
 
+		authRepo := &postgresinfra.AuthRepository{DB: deps.DB}
 		authService := &services.AuthService{
-			Users:         &postgresinfra.AuthRepository{DB: deps.DB},
+			Users:         authRepo,
 			RefreshTokens: &postgresinfra.RefreshTokenRepository{DB: deps.DB},
 			PrivateKey:    deps.AuthPrivateKey,
 			PublicKey:     deps.AuthPublicKey,
@@ -138,13 +149,24 @@ func NewRouter(deps Deps) http.Handler {
 		}
 		authHandler := &handlers.AuthHandler{
 			Service:     authService,
+			Repository:  authRepo,
 			RateLimiter: rateLimiter,
+			Logger:      deps.Logger,
 		}
 
 		api.Route("/auth", func(auth chi.Router) {
+			auth.Post("/lookup", authHandler.Lookup)
 			auth.Post("/login", authHandler.Login)
 			auth.Post("/refresh", authHandler.Refresh)
 			auth.Post("/logout", authHandler.Logout)
+
+			// Protected auth routes (require authentication)
+			auth.Group(func(protected chi.Router) {
+				if deps.AuthPublicKey != nil {
+					protected.Use(amiddleware.Authenticator{PublicKey: deps.AuthPublicKey}.Middleware)
+				}
+				protected.Get("/me", authHandler.Me)
+			})
 		})
 
 		api.Group(func(protected chi.Router) {
@@ -276,6 +298,9 @@ func NewRouter(deps Deps) http.Handler {
 		w.WriteHeader(http.StatusOK)
 		_, _ = w.Write([]byte("ok"))
 	})
+
+	// WebSocket endpoint
+	r.Get("/ws", wsHandler.ServeWS)
 
 	r.Get("/openapi.yaml", OpenAPISpecHandler)
 	r.Get("/docs", SwaggerUIHandler)

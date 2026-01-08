@@ -1,11 +1,13 @@
 package middleware
 
 import (
+	"bufio"
 	"bytes"
 	"crypto/sha256"
 	"encoding/hex"
 	"encoding/json"
 	"io"
+	"net"
 	"net/http"
 	"time"
 
@@ -120,6 +122,14 @@ func (r *responseRecorder) Write(p []byte) (int, error) {
 		}
 	}
 	return r.ResponseWriter.Write(p)
+}
+
+// Hijack implements http.Hijacker interface for WebSocket support
+func (r *responseRecorder) Hijack() (net.Conn, *bufio.ReadWriter, error) {
+	if hijacker, ok := r.ResponseWriter.(http.Hijacker); ok {
+		return hijacker.Hijack()
+	}
+	return nil, nil, http.ErrNotSupported
 }
 
 func readBody(r *http.Request, maxBytes int64) ([]byte, error) {

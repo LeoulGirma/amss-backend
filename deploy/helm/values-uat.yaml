@@ -1,7 +1,10 @@
 config:
   appEnv: "uat"
   redisAddr: "51.79.85.92:6379"
+  redisSentinels: "51.79.85.92:26379,51.79.85.92:26380,51.79.85.92:26381"
+  redisSentinelMaster: "amss-master"
   prometheusEnabled: "true"
+  corsAllowedOrigins: "https://amss.leoulgirma.com,https://amss-api-uat.duckdns.org,http://51.79.85.92:5173,http://localhost:5173"
 
 image:
   server:

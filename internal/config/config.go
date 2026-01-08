@@ -14,6 +14,8 @@ type Config struct {
 	GRPCAddr                 string
 	DBURL                    string
 	RedisAddr                string
+	RedisSentinels           []string
+	RedisSentinelMaster      string
 	ImportStorageDir         string
 	JWTPrivateKeyPEM         string
 	JWTPublicKeyPEM          string
@@ -34,6 +36,8 @@ func Load() (Config, error) {
 		GRPCAddr:                 getEnv("GRPC_ADDR", ":9090"),
 		DBURL:                    os.Getenv("DB_URL"),
 		RedisAddr:                getEnv("REDIS_ADDR", "localhost:6379"),
+		RedisSentinels:           splitCSV(os.Getenv("REDIS_SENTINELS")),
+		RedisSentinelMaster:      getEnv("REDIS_SENTINEL_MASTER", "amss-master"),
 		ImportStorageDir:         getEnv("IMPORT_STORAGE_DIR", "./data/imports"),
 		JWTPrivateKeyPEM:         os.Getenv("JWT_PRIVATE_KEY_PEM"),
 		JWTPublicKeyPEM:          os.Getenv("JWT_PUBLIC_KEY_PEM"),

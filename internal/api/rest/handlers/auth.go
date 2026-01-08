@@ -1,23 +1,30 @@
 package handlers
 
 import (
+	"crypto/sha256"
+	"encoding/hex"
 	"errors"
 	"net"
 	"net/http"
 	"strings"
 	"time"
 
+	"github.com/aeromaintain/amss/internal/api/rest/middleware"
+	"github.com/aeromaintain/amss/internal/app/ports"
 	"github.com/aeromaintain/amss/internal/app/services"
 	"github.com/aeromaintain/amss/internal/domain"
 	"github.com/aeromaintain/amss/internal/infra/redis"
 	"github.com/google/uuid"
+	"github.com/rs/zerolog"
 )
 
 type AuthHandler struct {
 	Service         *services.AuthService
+	Repository      ports.AuthRepository
 	RateLimiter     *redis.RateLimiter
 	LoginIPLimit    int
 	LoginEmailLimit int
+	Logger          zerolog.Logger
 }
 
 var errRateLimited = errors.New("rate limit exceeded")
@@ -36,6 +43,19 @@ type tokenResponse struct {
 	AccessToken  string `json:"access_token"`
 	RefreshToken string `json:"refresh_token"`
 	ExpiresIn    int64  `json:"expires_in"`
+}
+
+type lookupRequest struct {
+	Email string `json:"email" validate:"required,email"`
+}
+
+type orgInfoResponse struct {
+	OrgID   string `json:"org_id"`
+	OrgName string `json:"org_name"`
+}
+
+type lookupResponse struct {
+	Organizations []orgInfoResponse `json:"organizations"`
 }
 
 func (h *AuthHandler) Login(w http.ResponseWriter, r *http.Request) {
@@ -118,6 +138,31 @@ func (h *AuthHandler) Logout(w http.ResponseWriter, r *http.Request) {
 	w.WriteHeader(http.StatusNoContent)
 }
 
+func (h *AuthHandler) Lookup(w http.ResponseWriter, r *http.Request) {
+	var req lookupRequest
+	if err := decodeAndValidateJSON(r, &req); err != nil {
+		writeError(w, r, http.StatusBadRequest, "VALIDATION_ERROR", err.Error())
+		return
+	}
+
+	email := strings.TrimSpace(strings.ToLower(req.Email))
+	orgs, err := h.Repository.LookupOrgsByEmail(r.Context(), email)
+	if err != nil {
+		writeError(w, r, http.StatusInternalServerError, "LOOKUP_ERROR", "lookup failed")
+		return
+	}
+
+	resp := lookupResponse{Organizations: make([]orgInfoResponse, 0, len(orgs))}
+	for _, org := range orgs {
+		resp.Organizations = append(resp.Organizations, orgInfoResponse{
+			OrgID:   org.OrgID.String(),
+			OrgName: org.OrgName,
+		})
+	}
+
+	writeJSON(w, http.StatusOK, resp)
+}
+
 func (h *AuthHandler) checkLoginRateLimits(r *http.Request, email string) error {
 	if h.RateLimiter == nil {
 		return nil
@@ -133,6 +178,7 @@ func (h *AuthHandler) checkLoginRateLimits(r *http.Request, email string) error 
 	ip := clientIP(r)
 	allowed, _, _, err := h.RateLimiter.Allow(r.Context(), "login:ip:"+ip, ipLimit, time.Minute)
 	if err != nil {
+		h.logRateLimitError(r, "ip", ip, err)
 		return err
 	}
 	if !allowed {
@@ -140,12 +186,28 @@ func (h *AuthHandler) checkLoginRateLimits(r *http.Request, email string) error 
 	}
 	allowed, _, _, err = h.RateLimiter.Allow(r.Context(), "login:email:"+strings.ToLower(email), emailLimit, time.Minute)
 	if err != nil {
+		h.logRateLimitError(r, "email", strings.ToLower(email), err)
 		return err
 	}
 	if !allowed {
 		return errRateLimited
 	}
 	return nil
+}
+
+func (h *AuthHandler) logRateLimitError(r *http.Request, dimension, identifier string, err error) {
+	h.Logger.Error().
+		Err(err).
+		Str("request_id", middleware.RequestIDFromContext(r.Context())).
+		Str("dimension", dimension).
+		Str("identifier_hash", hashIdentifier(identifier)).
+		Str("client_ip", clientIP(r)).
+		Msg("login_rate_limit_error")
+}
+
+func hashIdentifier(value string) string {
+	sum := sha256.Sum256([]byte(value))
+	return hex.EncodeToString(sum[:])
 }
 
 func clientIP(r *http.Request) string {
@@ -158,4 +220,50 @@ func clientIP(r *http.Request) string {
 		return host
 	}
 	return r.RemoteAddr
+}
+
+// meResponse represents the current user's profile
+type meResponse struct {
+	ID        string  `json:"id"`
+	OrgID     string  `json:"org_id"`
+	Email     string  `json:"email"`
+	Role      string  `json:"role"`
+	LastLogin *string `json:"last_login"`
+	CreatedAt string  `json:"created_at"`
+	UpdatedAt string  `json:"updated_at"`
+}
+
+// Me returns the current authenticated user's profile
+func (h *AuthHandler) Me(w http.ResponseWriter, r *http.Request) {
+	principal, ok := getPrincipal(r)
+	if !ok {
+		writeError(w, r, http.StatusUnauthorized, "AUTH", "unauthorized")
+		return
+	}
+
+	user, err := h.Repository.GetUserByID(r.Context(), principal.OrgID, principal.UserID)
+	if err != nil {
+		if err == domain.ErrNotFound {
+			writeError(w, r, http.StatusNotFound, "NOT_FOUND", "user not found")
+			return
+		}
+		writeError(w, r, http.StatusInternalServerError, "INTERNAL", "failed to get user")
+		return
+	}
+
+	var lastLogin *string
+	if user.LastLogin != nil {
+		formatted := user.LastLogin.Format(time.RFC3339)
+		lastLogin = &formatted
+	}
+
+	writeJSON(w, http.StatusOK, meResponse{
+		ID:        user.ID.String(),
+		OrgID:     user.OrgID.String(),
+		Email:     user.Email,
+		Role:      string(user.Role),
+		LastLogin: lastLogin,
+		CreatedAt: user.CreatedAt.Format(time.RFC3339),
+		UpdatedAt: user.UpdatedAt.Format(time.RFC3339),
+	})
 }

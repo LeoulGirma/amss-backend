@@ -20,6 +20,10 @@ func actorFromRequest(r *http.Request) (app.Actor, bool) {
 	}, true
 }
 
+func getPrincipal(r *http.Request) (middleware.Principal, bool) {
+	return middleware.PrincipalFromContext(r.Context())
+}
+
 func servicesFromRequest(r *http.Request) (middleware.ServiceRegistry, bool) {
 	return middleware.ServicesFromContext(r.Context())
 }

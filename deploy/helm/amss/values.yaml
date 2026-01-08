@@ -30,6 +30,8 @@ config:
   httpAddr: ":8080"
   grpcAddr: ":9090"
   redisAddr: "51.79.85.92:6379"
+  redisSentinels: ""
+  redisSentinelMaster: "amss-master"
   importStorageDir: "/data/imports"
   accessTokenTtl: "15m"
   refreshTokenTtl: "168h"

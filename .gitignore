@@ -22,3 +22,8 @@ Thumbs.db
 jwt-private.pem
 jwt-public.pem
 *.pem
+
+# Node modules (for any JS tooling)
+node_modules/
+package-lock.json
+package.json

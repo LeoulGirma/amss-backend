@@ -52,7 +52,15 @@ func main() {
 	}
 	defer dbpool.Close()
 
-	redisClient := redis.NewClient(&redis.Options{Addr: cfg.RedisAddr})
+	var redisClient *redis.Client
+	if len(cfg.RedisSentinels) > 0 {
+		redisClient = redis.NewFailoverClient(&redis.FailoverOptions{
+			MasterName:    cfg.RedisSentinelMaster,
+			SentinelAddrs: cfg.RedisSentinels,
+		})
+	} else {
+		redisClient = redis.NewClient(&redis.Options{Addr: cfg.RedisAddr})
+	}
 	defer func() { _ = redisClient.Close() }()
 
 	privateKey, err := auth.ParseRSAPrivateKeyFromPEM(cfg.JWTPrivateKeyPEM)
