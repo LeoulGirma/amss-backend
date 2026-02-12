@@ -28,7 +28,7 @@ func TransitionTaskState(w http.ResponseWriter, r *http.Request) {
 		writeError(w, r, http.StatusUnauthorized, "AUTH", "unauthorized")
 		return
 	}
-	if actor.Role != domain.RoleScheduler && actor.Role != domain.RoleMechanic && actor.Role != domain.RoleAdmin {
+	if actor.Role != domain.RoleScheduler && actor.Role != domain.RoleMechanic && actor.Role != domain.RoleAdmin && actor.Role != domain.RoleTenantAdmin {
 		writeError(w, r, http.StatusForbidden, "FORBIDDEN", "forbidden")
 		return
 	}
