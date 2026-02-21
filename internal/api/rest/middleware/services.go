@@ -22,7 +22,11 @@ type ServiceRegistry struct {
 	Imports       *services.ImportService
 	Webhooks      *services.WebhookService
 	Policies      *services.OrgPolicyService
-	Reports       *services.ReportService
+	Reports        *services.ReportService
+	Certifications *services.CertificationService
+	Directives     *services.DirectiveService
+	Alerts         *services.AlertService
+	Scheduling     *services.SchedulingService
 }
 
 func InjectServices(registry ServiceRegistry) func(http.Handler) http.Handler {

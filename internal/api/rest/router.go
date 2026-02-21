@@ -137,6 +137,24 @@ func NewRouter(deps Deps) http.Handler {
 		reportService := &services.ReportService{
 			Reports: &postgresinfra.ReportRepository{DB: deps.DB},
 		}
+		certificationService := &services.CertificationService{
+			Certs: &postgresinfra.CertificationRepository{DB: deps.DB},
+			Audit: auditRepo,
+		}
+		directiveService := &services.DirectiveService{
+			Directives: &postgresinfra.DirectiveRepository{DB: deps.DB},
+			Aircraft:   aircraftRepo,
+			Audit:      auditRepo,
+		}
+		alertService := &services.AlertService{
+			Alerts: &postgresinfra.AlertRepository{DB: deps.DB},
+		}
+		schedulingService := &services.SchedulingService{
+			Tasks:          &postgresinfra.TaskRepository{DB: deps.DB},
+			Dependencies:   &postgresinfra.TaskDependencyRepository{DB: deps.DB},
+			ScheduleEvents: &postgresinfra.ScheduleChangeRepository{DB: deps.DB},
+			Outbox:         outboxRepo,
+		}
 
 		authRepo := &postgresinfra.AuthRepository{DB: deps.DB}
 		authService := &services.AuthService{
@@ -185,8 +203,12 @@ func NewRouter(deps Deps) http.Handler {
 				Programs:      programService,
 				Imports:       importService,
 				Webhooks:      webhookService,
-				Policies:      policyService,
-				Reports:       reportService,
+				Policies:       policyService,
+				Reports:        reportService,
+				Certifications: certificationService,
+				Directives:     directiveService,
+				Alerts:         alertService,
+				Scheduling:     schedulingService,
 			}))
 			protected.Use(amiddleware.Idempotency(amiddleware.IdempotencyConfig{Store: idempotencyStore}))
 			protected.Use(amiddleware.RateLimit(amiddleware.RateLimitConfig{
@@ -291,6 +313,54 @@ func NewRouter(deps Deps) http.Handler {
 			})
 			protected.Get("/audit-logs", handlers.ListAuditLogs)
 			protected.Get("/audit-logs/export", handlers.ExportAuditLogs)
+
+			// Certification & qualification endpoints
+			protected.Get("/certification-types", handlers.ListCertTypes)
+			protected.Get("/qualified-mechanics", handlers.GetQualifiedMechanics)
+			protected.Post("/task-skill-requirements", handlers.CreateTaskSkillRequirement)
+			protected.Route("/users/{userId}/certifications", func(certs chi.Router) {
+				certs.Get("/", handlers.ListUserCertifications)
+				certs.Post("/", handlers.CreateUserCertification)
+				certs.Patch("/{certId}", handlers.UpdateUserCertification)
+			})
+			protected.Route("/users/{userId}/type-ratings", func(ratings chi.Router) {
+				ratings.Get("/", handlers.ListUserTypeRatings)
+				ratings.Post("/", handlers.CreateUserTypeRating)
+			})
+			protected.Route("/users/{userId}/skills", func(skills chi.Router) {
+				skills.Get("/", handlers.ListUserSkills)
+				skills.Post("/", handlers.CreateUserSkill)
+			})
+			protected.Get("/users/{userId}/qualification-check", handlers.CheckMechanicQualification)
+
+			// Directive & compliance endpoints
+			protected.Get("/regulatory-authorities", handlers.ListAuthorities)
+			protected.Route("/directives", func(directives chi.Router) {
+				directives.Post("/", handlers.CreateDirective)
+				directives.Get("/", handlers.ListDirectives)
+				directives.Get("/{id}", handlers.GetDirective)
+				directives.Post("/{id}/scan-fleet", handlers.ScanFleetForDirective)
+			})
+			protected.Get("/aircraft/{id}/compliance-status", handlers.ListAircraftDirectiveCompliance)
+			protected.Post("/aircraft-directive-compliance", handlers.UpdateAircraftDirectiveCompliance)
+			protected.Get("/compliance-templates/{authorityId}", handlers.ListComplianceTemplates)
+
+			// Alert endpoints
+			protected.Route("/alerts", func(alerts chi.Router) {
+				alerts.Get("/", handlers.ListAlerts)
+				alerts.Post("/{id}/acknowledge", handlers.AcknowledgeAlert)
+				alerts.Post("/{id}/resolve", handlers.ResolveAlert)
+			})
+
+			// Scheduling & dependency endpoints
+			protected.Get("/scheduling/conflicts", handlers.DetectScheduleConflicts)
+			protected.Route("/maintenance-tasks/{id}/dependencies", func(deps chi.Router) {
+				deps.Get("/", handlers.ListTaskDependencies)
+				deps.Post("/", handlers.CreateTaskDependency)
+				deps.Delete("/{depId}", handlers.DeleteTaskDependency)
+			})
+			protected.Post("/maintenance-tasks/{id}/reschedule", handlers.RescheduleTask)
+			protected.Get("/maintenance-tasks/{id}/schedule-history", handlers.ListScheduleChanges)
 		})
 	})
 

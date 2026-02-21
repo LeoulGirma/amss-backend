@@ -135,3 +135,119 @@ type UserFilter struct {
 	Limit  int
 	Offset int
 }
+
+// --- Certification & Skill Repositories ---
+
+type CertificationRepository interface {
+	// Certification types (reference data)
+	ListCertTypes(ctx context.Context) ([]domain.CertificationType, error)
+	GetCertTypeByID(ctx context.Context, id uuid.UUID) (domain.CertificationType, error)
+
+	// Employee certifications
+	GetCertByID(ctx context.Context, orgID, id uuid.UUID) (domain.EmployeeCertification, error)
+	ListCertsByUser(ctx context.Context, orgID, userID uuid.UUID) ([]domain.EmployeeCertification, error)
+	CreateCert(ctx context.Context, cert domain.EmployeeCertification) (domain.EmployeeCertification, error)
+	UpdateCert(ctx context.Context, cert domain.EmployeeCertification) (domain.EmployeeCertification, error)
+	ListExpiringCerts(ctx context.Context, orgID uuid.UUID, before time.Time) ([]domain.EmployeeCertification, error)
+
+	// Type ratings
+	ListTypeRatingsByUser(ctx context.Context, orgID, userID uuid.UUID) ([]domain.EmployeeTypeRating, error)
+	CreateTypeRating(ctx context.Context, rating domain.EmployeeTypeRating) (domain.EmployeeTypeRating, error)
+	HasTypeRating(ctx context.Context, orgID, userID, aircraftTypeID uuid.UUID) (bool, error)
+
+	// Skills
+	ListSkillsByUser(ctx context.Context, orgID, userID uuid.UUID) ([]domain.EmployeeSkill, error)
+	CreateSkill(ctx context.Context, skill domain.EmployeeSkill) (domain.EmployeeSkill, error)
+	UpdateSkill(ctx context.Context, skill domain.EmployeeSkill) (domain.EmployeeSkill, error)
+
+	// Recency
+	LogRecency(ctx context.Context, entry domain.EmployeeRecencyLog) error
+	GetRecencyHours(ctx context.Context, orgID, userID, aircraftTypeID uuid.UUID, since time.Time) (float64, error)
+
+	// Task skill requirements
+	ListRequirements(ctx context.Context, orgID uuid.UUID, taskType domain.TaskType, aircraftTypeID *uuid.UUID) ([]domain.TaskSkillRequirement, error)
+	CreateRequirement(ctx context.Context, req domain.TaskSkillRequirement) (domain.TaskSkillRequirement, error)
+
+	// Qualification check
+	GetQualifiedMechanics(ctx context.Context, orgID uuid.UUID, taskType domain.TaskType, aircraftTypeID *uuid.UUID) ([]uuid.UUID, error)
+}
+
+type AircraftTypeRepository interface {
+	GetByID(ctx context.Context, id uuid.UUID) (domain.AircraftType, error)
+	GetByICAOCode(ctx context.Context, code string) (domain.AircraftType, error)
+	List(ctx context.Context) ([]domain.AircraftType, error)
+	Create(ctx context.Context, at domain.AircraftType) (domain.AircraftType, error)
+}
+
+// --- Directive & Compliance Repositories ---
+
+type DirectiveRepository interface {
+	// Regulatory authorities
+	ListAuthorities(ctx context.Context) ([]domain.RegulatoryAuthority, error)
+	GetAuthorityByID(ctx context.Context, id uuid.UUID) (domain.RegulatoryAuthority, error)
+
+	// Compliance directives
+	GetDirectiveByID(ctx context.Context, id uuid.UUID) (domain.ComplianceDirective, error)
+	ListDirectives(ctx context.Context, filter DirectiveFilter) ([]domain.ComplianceDirective, error)
+	CreateDirective(ctx context.Context, d domain.ComplianceDirective) (domain.ComplianceDirective, error)
+	UpdateDirective(ctx context.Context, d domain.ComplianceDirective) (domain.ComplianceDirective, error)
+
+	// Aircraft directive compliance
+	GetAircraftCompliance(ctx context.Context, orgID, aircraftID, directiveID uuid.UUID) (domain.AircraftDirectiveCompliance, error)
+	ListAircraftCompliance(ctx context.Context, filter AircraftComplianceFilter) ([]domain.AircraftDirectiveCompliance, error)
+	UpsertAircraftCompliance(ctx context.Context, c domain.AircraftDirectiveCompliance) (domain.AircraftDirectiveCompliance, error)
+
+	// Templates
+	ListTemplates(ctx context.Context, authorityID uuid.UUID) ([]domain.ComplianceTemplate, error)
+	GetTemplateByCode(ctx context.Context, authorityID uuid.UUID, code string) (domain.ComplianceTemplate, error)
+}
+
+type DirectiveFilter struct {
+	OrgID         *uuid.UUID
+	AuthorityID   *uuid.UUID
+	DirectiveType *domain.DirectiveType
+	Limit         int
+	Offset        int
+}
+
+type AircraftComplianceFilter struct {
+	OrgID      *uuid.UUID
+	AircraftID *uuid.UUID
+	Status     *domain.DirectiveComplianceStatus
+	Limit      int
+	Offset     int
+}
+
+// --- Alert Repository ---
+
+type AlertRepository interface {
+	Create(ctx context.Context, alert domain.Alert) (domain.Alert, error)
+	GetByID(ctx context.Context, orgID, id uuid.UUID) (domain.Alert, error)
+	List(ctx context.Context, filter AlertFilter) ([]domain.Alert, error)
+	Acknowledge(ctx context.Context, orgID, id, userID uuid.UUID, at time.Time) error
+	Resolve(ctx context.Context, orgID, id uuid.UUID, at time.Time) error
+	CountUnresolved(ctx context.Context, orgID uuid.UUID) (int, error)
+}
+
+type AlertFilter struct {
+	OrgID    *uuid.UUID
+	Level    *domain.AlertLevel
+	Category string
+	Resolved *bool
+	Limit    int
+	Offset   int
+}
+
+// --- Scheduling Repository ---
+
+type TaskDependencyRepository interface {
+	Create(ctx context.Context, dep domain.TaskDependency) (domain.TaskDependency, error)
+	Delete(ctx context.Context, orgID, id uuid.UUID) error
+	ListByTask(ctx context.Context, orgID, taskID uuid.UUID) ([]domain.TaskDependency, error)
+	ListDependents(ctx context.Context, orgID, taskID uuid.UUID) ([]domain.TaskDependency, error)
+}
+
+type ScheduleChangeRepository interface {
+	Create(ctx context.Context, event domain.ScheduleChangeEvent) (domain.ScheduleChangeEvent, error)
+	ListByTask(ctx context.Context, orgID, taskID uuid.UUID) ([]domain.ScheduleChangeEvent, error)
+}

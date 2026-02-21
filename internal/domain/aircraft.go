@@ -19,6 +19,7 @@ type Aircraft struct {
 	OrgID            uuid.UUID
 	TailNumber       string
 	Model            string
+	AircraftTypeID   *uuid.UUID
 	LastMaintenance  *time.Time
 	NextDue          *time.Time
 	Status           AircraftStatus
