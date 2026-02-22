@@ -1,5 +1,5 @@
 -- +goose Up
-CREATE TABLE refresh_tokens (
+CREATE TABLE IF NOT EXISTS refresh_tokens (
   id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
   org_id uuid NOT NULL REFERENCES organizations(id),
   user_id uuid NOT NULL,
@@ -15,8 +15,8 @@ CREATE TABLE refresh_tokens (
   FOREIGN KEY (rotated_from) REFERENCES refresh_tokens(id)
 );
 
-CREATE INDEX refresh_tokens_user_idx ON refresh_tokens (org_id, user_id, revoked_at);
-CREATE INDEX refresh_tokens_expires_idx ON refresh_tokens (expires_at);
+CREATE INDEX IF NOT EXISTS refresh_tokens_user_idx ON refresh_tokens (org_id, user_id, revoked_at);
+CREATE INDEX IF NOT EXISTS refresh_tokens_expires_idx ON refresh_tokens (expires_at);
 
 -- +goose Down
 DROP INDEX IF EXISTS refresh_tokens_expires_idx;

@@ -21,12 +21,12 @@ func (r *PartDefinitionRepository) GetByID(ctx context.Context, orgID, id uuid.U
 		return domain.PartDefinition{}, domain.ErrNotFound
 	}
 	row := r.DB.QueryRow(ctx, `
-		SELECT id, org_id, name, category, deleted_at, created_at, updated_at
+		SELECT id, org_id, name, category, min_stock_level, reorder_point, lead_time_days, deleted_at, created_at, updated_at
 		FROM part_definitions
 		WHERE org_id=$1 AND id=$2 AND deleted_at IS NULL
 	`, orgID, id)
 	var def domain.PartDefinition
-	if err := row.Scan(&def.ID, &def.OrgID, &def.Name, &def.Category, &def.DeletedAt, &def.CreatedAt, &def.UpdatedAt); err != nil {
+	if err := row.Scan(&def.ID, &def.OrgID, &def.Name, &def.Category, &def.MinStockLevel, &def.ReorderPoint, &def.LeadTimeDays, &def.DeletedAt, &def.CreatedAt, &def.UpdatedAt); err != nil {
 		if err == pgx.ErrNoRows {
 			return domain.PartDefinition{}, domain.ErrNotFound
 		}
@@ -40,12 +40,12 @@ func (r *PartDefinitionRepository) Create(ctx context.Context, def domain.PartDe
 		return domain.PartDefinition{}, domain.ErrNotFound
 	}
 	row := r.DB.QueryRow(ctx, `
-		INSERT INTO part_definitions (id, org_id, name, category, created_at, updated_at, deleted_at)
-		VALUES ($1,$2,$3,$4,$5,$6,$7)
-		RETURNING id, org_id, name, category, deleted_at, created_at, updated_at
-	`, def.ID, def.OrgID, def.Name, def.Category, def.CreatedAt, def.UpdatedAt, def.DeletedAt)
+		INSERT INTO part_definitions (id, org_id, name, category, min_stock_level, reorder_point, lead_time_days, created_at, updated_at, deleted_at)
+		VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10)
+		RETURNING id, org_id, name, category, min_stock_level, reorder_point, lead_time_days, deleted_at, created_at, updated_at
+	`, def.ID, def.OrgID, def.Name, def.Category, def.MinStockLevel, def.ReorderPoint, def.LeadTimeDays, def.CreatedAt, def.UpdatedAt, def.DeletedAt)
 	var created domain.PartDefinition
-	if err := row.Scan(&created.ID, &created.OrgID, &created.Name, &created.Category, &created.DeletedAt, &created.CreatedAt, &created.UpdatedAt); err != nil {
+	if err := row.Scan(&created.ID, &created.OrgID, &created.Name, &created.Category, &created.MinStockLevel, &created.ReorderPoint, &created.LeadTimeDays, &created.DeletedAt, &created.CreatedAt, &created.UpdatedAt); err != nil {
 		return domain.PartDefinition{}, TranslateError(err)
 	}
 	return created, nil
@@ -57,12 +57,12 @@ func (r *PartDefinitionRepository) Update(ctx context.Context, def domain.PartDe
 	}
 	row := r.DB.QueryRow(ctx, `
 		UPDATE part_definitions
-		SET name=$1, category=$2, updated_at=$3
-		WHERE org_id=$4 AND id=$5 AND deleted_at IS NULL
-		RETURNING id, org_id, name, category, deleted_at, created_at, updated_at
-	`, def.Name, def.Category, def.UpdatedAt, def.OrgID, def.ID)
+		SET name=$1, category=$2, min_stock_level=$3, reorder_point=$4, lead_time_days=$5, updated_at=$6
+		WHERE org_id=$7 AND id=$8 AND deleted_at IS NULL
+		RETURNING id, org_id, name, category, min_stock_level, reorder_point, lead_time_days, deleted_at, created_at, updated_at
+	`, def.Name, def.Category, def.MinStockLevel, def.ReorderPoint, def.LeadTimeDays, def.UpdatedAt, def.OrgID, def.ID)
 	var updated domain.PartDefinition
-	if err := row.Scan(&updated.ID, &updated.OrgID, &updated.Name, &updated.Category, &updated.DeletedAt, &updated.CreatedAt, &updated.UpdatedAt); err != nil {
+	if err := row.Scan(&updated.ID, &updated.OrgID, &updated.Name, &updated.Category, &updated.MinStockLevel, &updated.ReorderPoint, &updated.LeadTimeDays, &updated.DeletedAt, &updated.CreatedAt, &updated.UpdatedAt); err != nil {
 		return domain.PartDefinition{}, TranslateError(err)
 	}
 	return updated, nil
@@ -99,7 +99,7 @@ func (r *PartDefinitionRepository) List(ctx context.Context, filter ports.PartDe
 	}
 
 	query := `
-		SELECT id, org_id, name, category, deleted_at, created_at, updated_at
+		SELECT id, org_id, name, category, min_stock_level, reorder_point, lead_time_days, deleted_at, created_at, updated_at
 		FROM part_definitions
 		WHERE deleted_at IS NULL`
 	if len(clauses) > 0 {
@@ -117,7 +117,7 @@ func (r *PartDefinitionRepository) List(ctx context.Context, filter ports.PartDe
 	var defs []domain.PartDefinition
 	for rows.Next() {
 		var def domain.PartDefinition
-		if err := rows.Scan(&def.ID, &def.OrgID, &def.Name, &def.Category, &def.DeletedAt, &def.CreatedAt, &def.UpdatedAt); err != nil {
+		if err := rows.Scan(&def.ID, &def.OrgID, &def.Name, &def.Category, &def.MinStockLevel, &def.ReorderPoint, &def.LeadTimeDays, &def.DeletedAt, &def.CreatedAt, &def.UpdatedAt); err != nil {
 			return nil, err
 		}
 		defs = append(defs, def)

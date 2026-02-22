@@ -251,3 +251,9 @@ type ScheduleChangeRepository interface {
 	Create(ctx context.Context, event domain.ScheduleChangeEvent) (domain.ScheduleChangeEvent, error)
 	ListByTask(ctx context.Context, orgID, taskID uuid.UUID) ([]domain.ScheduleChangeEvent, error)
 }
+
+// --- Metrics Repository ---
+
+type MetricsRepository interface {
+	GetDashboardMetrics(ctx context.Context, orgID uuid.UUID) (domain.DashboardMetrics, error)
+}

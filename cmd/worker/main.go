@@ -5,6 +5,7 @@ import (
 	"os"
 	"os/signal"
 	"syscall"
+	"time"
 
 	"github.com/aeromaintain/amss/internal/app/services"
 	"github.com/aeromaintain/amss/internal/config"
@@ -73,11 +74,13 @@ func main() {
 	importRowRepo := &postgres.ImportRowRepository{DB: dbpool}
 	retentionRepo := &postgres.RetentionRepository{DB: dbpool}
 
+	certRepo := &postgres.CertificationRepository{DB: dbpool}
 	taskService := &services.TaskService{
 		Tasks:        taskRepo,
 		Aircraft:     aircraftRepo,
 		Reservations: reservationRepo,
 		Compliance:   complianceRepo,
+		Certs:        certRepo,
 		Audit:        auditRepo,
 		Outbox:       outboxRepo,
 	}
@@ -128,12 +131,19 @@ func main() {
 		Logger:    logger,
 		Interval:  cfg.RetentionCleanupInterval,
 	}
+	alertTrigger := &jobs.AlertTrigger{
+		DB:       dbpool,
+		Alerts:   &postgres.AlertRepository{DB: dbpool},
+		Logger:   logger,
+		Interval: 15 * time.Minute,
+	}
 
 	go outboxPublisher.Run(ctx)
 	go webhookDispatcher.Run(ctx)
 	go importProcessor.Run(ctx)
 	go programGenerator.Run(ctx)
 	go retentionCleaner.Run(ctx)
+	go alertTrigger.Run(ctx)
 
 	logger.Info().Str("worker_id", cfg.WorkerID).Msg("worker started")
 	<-ctx.Done()

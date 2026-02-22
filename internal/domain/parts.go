@@ -23,13 +23,16 @@ const (
 )
 
 type PartDefinition struct {
-	ID        uuid.UUID
-	OrgID     uuid.UUID
-	Name      string
-	Category  string
-	DeletedAt *time.Time
-	CreatedAt time.Time
-	UpdatedAt time.Time
+	ID             uuid.UUID
+	OrgID          uuid.UUID
+	Name           string
+	Category       string
+	MinStockLevel  int
+	ReorderPoint   int
+	LeadTimeDays   *int
+	DeletedAt      *time.Time
+	CreatedAt      time.Time
+	UpdatedAt      time.Time
 }
 
 type PartItem struct {

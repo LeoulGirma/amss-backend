@@ -153,6 +153,15 @@ func (s *DirectiveService) UpdateAircraftCompliance(ctx context.Context, actor a
 		compliance.ComplianceDate = &now
 		compliance.SignedOffBy = &actor.UserID
 		compliance.SignedOffAt = &now
+
+		// For recurring directives, compute the next due date
+		directive, err := s.Directives.GetDirectiveByID(ctx, input.DirectiveID)
+		if err == nil && directive.RecurrenceInterval != "" {
+			nextDue := computeNextDue(now, directive.RecurrenceInterval)
+			if nextDue != nil {
+				compliance.NextDueDate = nextDue
+			}
+		}
 	}
 
 	return s.Directives.UpsertAircraftCompliance(ctx, compliance)
@@ -203,6 +212,11 @@ func (s *DirectiveService) ScanFleetForDirective(ctx context.Context, actor app.
 			CreatedAt:   now,
 			UpdatedAt:   now,
 		}
+		// Set initial next_due_date from directive's compliance deadline
+		if directive.ComplianceDeadline != nil {
+			t := time.Date(directive.ComplianceDeadline.Year(), directive.ComplianceDeadline.Month(), directive.ComplianceDeadline.Day(), 0, 0, 0, 0, time.UTC)
+			compliance.NextDueDate = &t
+		}
 		if _, err := s.Directives.UpsertAircraftCompliance(ctx, compliance); err != nil {
 			return count, err
 		}
@@ -210,6 +224,41 @@ func (s *DirectiveService) ScanFleetForDirective(ctx context.Context, actor app.
 	}
 
 	return count, nil
+}
+
+// computeNextDue parses a recurrence interval string and returns the next due date.
+// Supported formats: "30d", "90d", "180d", "365d", "1y", "2y", "6m", "12m"
+func computeNextDue(from time.Time, interval string) *time.Time {
+	if len(interval) < 2 {
+		return nil
+	}
+
+	unit := interval[len(interval)-1]
+	numStr := interval[:len(interval)-1]
+
+	var num int
+	for _, ch := range numStr {
+		if ch < '0' || ch > '9' {
+			return nil
+		}
+		num = num*10 + int(ch-'0')
+	}
+	if num <= 0 {
+		return nil
+	}
+
+	var next time.Time
+	switch unit {
+	case 'd':
+		next = from.AddDate(0, 0, num)
+	case 'm':
+		next = from.AddDate(0, num, 0)
+	case 'y':
+		next = from.AddDate(num, 0, 0)
+	default:
+		return nil
+	}
+	return &next
 }
 
 // --- Templates ---

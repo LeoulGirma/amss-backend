@@ -15,7 +15,7 @@
 | 1.3 | Migration 00010: Regulatory compliance tables | ✅ DONE | regulatory_authorities, org_regulatory_registrations, compliance_directives, aircraft_directive_compliance, compliance_templates |
 | 1.4 | Migration 00011: Alert system tables | ✅ DONE | alert_level enum, alerts table |
 | 1.5 | Migration 00012: Seed data | ✅ DONE | Regulatory authorities (FAA/EASA/ECAA/ICAO), certification types, compliance templates, aircraft types, skill types |
-| 1.6 | Run migrations in UAT | ⬜ TODO | Verify all migrations apply cleanly |
+| 1.6 | Run migrations in UAT | ✅ DONE | All 12 migrations applied cleanly (made idempotent for UAT) |
 
 ### Week 2 — Certification Domain & Service
 
@@ -44,13 +44,13 @@
 | # | Task | Status | Notes |
 |---|------|--------|-------|
 | 4.1 | Domain: `alert.go` | ✅ DONE | Alert struct with level, category, acknowledgement, escalation |
-| 4.2 | Service: `metrics_service.go` | ⬜ TODO | Compute all dashboard KPIs from database |
+| 4.2 | Service: `metrics_service.go` | ✅ DONE | Domain type, repository (optimized SQL), service, handler, route wired |
 | 4.3 | Service: `alert_service.go` | ✅ DONE | Alert CRUD, acknowledge, resolve, count unresolved |
 | 4.4 | Repository: `alert_repository.go` | ✅ DONE | Create, list, acknowledge, resolve, count unresolved |
 | 4.5 | REST handlers: `alerts.go` | ✅ DONE | GET /alerts, POST /alerts/{id}/acknowledge, POST /alerts/{id}/resolve |
-| 4.6 | Worker: dashboard metrics cron job | ⬜ TODO | 30-second interval, compute + broadcast via WS |
-| 4.7 | WebSocket: new event types | ⬜ TODO | dashboard:metrics_snapshot, aircraft:aog, task:overdue, compliance:cert_expiring, schedule:conflict |
-| 4.8 | WebSocket: role-based broadcast | ⬜ TODO | Extend Hub to support targeted broadcast by role |
+| 4.6 | Worker: dashboard metrics cron job | ✅ DONE | MetricsBroadcaster job, 30-second interval, broadcasts to connected orgs |
+| 4.7 | WebSocket: new event types | ✅ DONE | 15 event types: dashboard, aircraft, task, compliance, scheduling, alerts, parts |
+| 4.8 | WebSocket: role-based broadcast | ✅ DONE | BroadcastToRoles() + ConnectedOrgIDs() + Client.Role field |
 | 4.9 | Tests: metrics + alerts | ⬜ TODO | Unit + integration tests |
 
 ---
@@ -61,9 +61,9 @@
 
 | # | Task | Status | Notes |
 |---|------|--------|-------|
-| 5.1 | Update `task.go` domain | ⬜ TODO | Add qualification check to CanTransition() |
-| 5.2 | Update `task_service.go` | ⬜ TODO | Query certifications + type ratings + recency before assigning mechanic |
-| 5.3 | Qualification validation flow | ⬜ TODO | 6-step check: cert → type rating → expiry → recency → skills → sign-off re-validate |
+| 5.1 | Update `task.go` domain | ✅ DONE | Qualification check in CanTransition() context already exists |
+| 5.2 | Update `task_service.go` | ✅ DONE | Added Certs dependency, validateMechanicQualification() method |
+| 5.3 | Qualification validation flow | ✅ DONE | 6-step check at Create, Update (mechanic change), and Completion (sign-off) |
 | 5.4 | Tests: qualification validation | ⬜ TODO | Edge cases: expired cert, missing type rating, insufficient recency |
 
 ### Week 6 — Task Dependencies & Rescheduling Engine
@@ -75,15 +75,15 @@
 | 6.3 | Service: `scheduling_service.go` | ✅ DONE | Dependency CRUD, cycle detection, cascade rescheduling, conflict detection |
 | 6.4 | REST handlers: `scheduling.go` | ✅ DONE | POST /tasks/{id}/reschedule, GET/POST /tasks/{id}/dependencies, GET /scheduling/conflicts |
 | 6.5 | Router integration | ✅ DONE | All scheduling routes wired |
-| 6.6 | Update `parts_service.go` | ⬜ TODO | Stock level monitoring, trigger rescheduling check on part status change |
+| 6.6 | Update `parts_service.go` | ✅ DONE | Stock level monitoring on part use, auto-alert on low/out of stock, updated PartDefinition domain with stock fields |
 | 6.7 | Tests: scheduling engine | ⬜ TODO | Cycle detection, cascade propagation, atomicity |
 
 ### Week 7 — Alert System & Compliance Workflow
 
 | # | Task | Status | Notes |
 |---|------|--------|-------|
-| 7.1 | Alert service integration | ⬜ TODO | Wire alerts to cert expiry, parts low stock, task overdue, compliance deadline |
-| 7.2 | Compliance workflow | ⬜ TODO | Auto-generate compliance items from directives, track completion, compute next_due |
+| 7.1 | Alert service integration | ✅ DONE | AlertTrigger job: cert expiry (30/60/90d), task overdue, directive overdue. Low-stock alerts via PartReservationService |
+| 7.2 | Compliance workflow | ✅ DONE | ScanFleet sets next_due from deadline, UpdateCompliance computes next_due for recurring directives (d/m/y intervals) |
 | 7.3 | REST handlers: `alerts.go` | ✅ DONE | GET /alerts, POST /alerts/{id}/acknowledge, POST /alerts/{id}/resolve |
 | 7.4 | Tests: alerts + compliance workflow | ⬜ TODO | Threshold triggers, escalation, recurring directive next-due |
 
@@ -147,10 +147,10 @@
 
 | Phase | Scope | Progress |
 |-------|-------|----------|
-| Phase 1: Foundation | Migrations + Domain + Services | 19/25 |
-| Phase 2: Core Features | Validation + Scheduling + Alerts | 6/18 |
+| Phase 1: Foundation | Migrations + Domain + Services | 23/25 |
+| Phase 2: Core Features | Validation + Scheduling + Alerts | 12/18 |
 | Phase 3: Integration | Frontend + Testing + Deploy | 0/17 |
-| **Total** | | **25/60** |
+| **Total** | | **35/60** |
 
 ---
 
@@ -179,8 +179,29 @@
 - `internal/api/rest/handlers/alerts.go`
 - `internal/api/rest/handlers/scheduling.go`
 
+### New Files (Phase 2 batch)
+- `internal/domain/metrics.go` — DashboardMetrics snapshot struct
+- `internal/infra/postgres/metrics_repository.go` — Optimized aggregate SQL for all KPIs
+- `internal/app/services/metrics_service.go` — Dashboard metrics service
+- `internal/api/rest/handlers/metrics.go` — GET /dashboard/metrics
+- `internal/infra/ws/events.go` — 15 WebSocket event type constants
+- `internal/jobs/metrics_broadcaster.go` — 30s cron, broadcasts metrics to connected orgs
+- `internal/jobs/alert_trigger.go` — 15m cron, checks cert expiry/task overdue/directive overdue
+
 ### Modified Files
 - `internal/domain/aircraft.go` — Added `AircraftTypeID` field
-- `internal/app/ports/repositories.go` — Added 6 new repository interfaces + filter types
-- `internal/api/rest/middleware/services.go` — Added Certifications, Directives, Alerts, Scheduling to ServiceRegistry
-- `internal/api/rest/router.go` — Wired all new services + routes
+- `internal/domain/parts.go` — Added MinStockLevel, ReorderPoint, LeadTimeDays to PartDefinition
+- `internal/app/ports/repositories.go` — Added 7 new repository interfaces + filter types (including MetricsRepository)
+- `internal/api/rest/middleware/services.go` — Added Certifications, Directives, Alerts, Scheduling, Metrics to ServiceRegistry
+- `internal/api/rest/router.go` — Wired all new services + routes + shared repos
+- `internal/app/services/task_service.go` — Added Certs dependency, validateMechanicQualification() at create/update/complete
+- `internal/app/services/part_reservation_service.go` — Added stock monitoring, auto-alert on low/out of stock
+- `internal/app/services/directive_service.go` — Enhanced compliance workflow with next_due computation for recurring directives
+- `internal/infra/postgres/part_definition_repository.go` — Updated queries for stock level fields
+- `internal/infra/ws/hub.go` — Added Client.Role, BroadcastToRoles(), ConnectedOrgIDs()
+- `cmd/server/main.go` — Added MetricsBroadcaster, Certs dependency on TaskService
+- `cmd/worker/main.go` — Added AlertTrigger job, Certs dependency on TaskService
+- `migrations/00005_seed_data.sql` — Made idempotent (skip if Demo Airline exists)
+- `migrations/00006_refresh_tokens.sql` — Made idempotent (IF NOT EXISTS)
+- `migrations/00007_add_import_file_path.sql` — Made idempotent (DO $$ EXCEPTION)
+- `migrations/00008-00012` — Made all idempotent (IF NOT EXISTS, ON CONFLICT DO NOTHING)

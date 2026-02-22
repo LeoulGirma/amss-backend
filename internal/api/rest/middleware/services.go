@@ -27,6 +27,7 @@ type ServiceRegistry struct {
 	Directives     *services.DirectiveService
 	Alerts         *services.AlertService
 	Scheduling     *services.SchedulingService
+	Metrics        *services.MetricsService
 }
 
 func InjectServices(registry ServiceRegistry) func(http.Handler) http.Handler {

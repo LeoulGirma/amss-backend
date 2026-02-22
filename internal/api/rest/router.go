@@ -79,21 +79,27 @@ func NewRouter(deps Deps) http.Handler {
 		importRowRepo := &postgresinfra.ImportRowRepository{DB: deps.DB}
 		webhookRepo := &postgresinfra.WebhookRepository{DB: deps.DB}
 		policyRepo := &postgresinfra.OrgPolicyRepository{DB: deps.DB}
+		certRepo := &postgresinfra.CertificationRepository{DB: deps.DB}
 		taskService := &services.TaskService{
 			Tasks:        &postgresinfra.TaskRepository{DB: deps.DB},
 			Aircraft:     aircraftRepo,
 			Reservations: &postgresinfra.PartReservationRepository{DB: deps.DB},
 			Compliance:   &postgresinfra.ComplianceRepository{DB: deps.DB},
+			Certs:        certRepo,
 			Audit:        auditRepo,
 			Outbox:       outboxRepo,
 		}
+		alertRepo := &postgresinfra.AlertRepository{DB: deps.DB}
+		partDefRepo := &postgresinfra.PartDefinitionRepository{DB: deps.DB}
 		partService := &services.PartReservationService{
-			Reservations: &postgresinfra.PartReservationRepository{DB: deps.DB},
-			PartItems:    &postgresinfra.PartItemRepository{DB: deps.DB},
-			Tasks:        &postgresinfra.TaskRepository{DB: deps.DB},
-			Locker:       locker,
-			Audit:        auditRepo,
-			Outbox:       outboxRepo,
+			Reservations:    &postgresinfra.PartReservationRepository{DB: deps.DB},
+			PartItems:       &postgresinfra.PartItemRepository{DB: deps.DB},
+			PartDefinitions: partDefRepo,
+			Tasks:           &postgresinfra.TaskRepository{DB: deps.DB},
+			Alerts:          alertRepo,
+			Locker:          locker,
+			Audit:           auditRepo,
+			Outbox:          outboxRepo,
 		}
 		complianceService := &services.ComplianceService{
 			Compliance: &postgresinfra.ComplianceRepository{DB: deps.DB},
@@ -104,7 +110,7 @@ func NewRouter(deps Deps) http.Handler {
 			Repo: &postgresinfra.AuditQueryRepository{DB: deps.DB},
 		}
 		catalogService := &services.PartCatalogService{
-			Definitions: &postgresinfra.PartDefinitionRepository{DB: deps.DB},
+			Definitions: partDefRepo,
 			Items:       &postgresinfra.PartItemRepository{DB: deps.DB},
 		}
 		orgService := &services.OrganizationService{
@@ -138,7 +144,7 @@ func NewRouter(deps Deps) http.Handler {
 			Reports: &postgresinfra.ReportRepository{DB: deps.DB},
 		}
 		certificationService := &services.CertificationService{
-			Certs: &postgresinfra.CertificationRepository{DB: deps.DB},
+			Certs: certRepo,
 			Audit: auditRepo,
 		}
 		directiveService := &services.DirectiveService{
@@ -147,13 +153,16 @@ func NewRouter(deps Deps) http.Handler {
 			Audit:      auditRepo,
 		}
 		alertService := &services.AlertService{
-			Alerts: &postgresinfra.AlertRepository{DB: deps.DB},
+			Alerts: alertRepo,
 		}
 		schedulingService := &services.SchedulingService{
 			Tasks:          &postgresinfra.TaskRepository{DB: deps.DB},
 			Dependencies:   &postgresinfra.TaskDependencyRepository{DB: deps.DB},
 			ScheduleEvents: &postgresinfra.ScheduleChangeRepository{DB: deps.DB},
 			Outbox:         outboxRepo,
+		}
+		metricsService := &services.MetricsService{
+			Metrics: &postgresinfra.MetricsRepository{DB: deps.DB},
 		}
 
 		authRepo := &postgresinfra.AuthRepository{DB: deps.DB}
@@ -209,6 +218,7 @@ func NewRouter(deps Deps) http.Handler {
 				Directives:     directiveService,
 				Alerts:         alertService,
 				Scheduling:     schedulingService,
+				Metrics:        metricsService,
 			}))
 			protected.Use(amiddleware.Idempotency(amiddleware.IdempotencyConfig{Store: idempotencyStore}))
 			protected.Use(amiddleware.RateLimit(amiddleware.RateLimitConfig{
@@ -351,6 +361,9 @@ func NewRouter(deps Deps) http.Handler {
 				alerts.Post("/{id}/acknowledge", handlers.AcknowledgeAlert)
 				alerts.Post("/{id}/resolve", handlers.ResolveAlert)
 			})
+
+			// Dashboard metrics
+			protected.Get("/dashboard/metrics", handlers.GetDashboardMetrics)
 
 			// Scheduling & dependency endpoints
 			protected.Get("/scheduling/conflicts", handlers.DetectScheduleConflicts)

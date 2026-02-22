@@ -12,13 +12,15 @@ import (
 )
 
 type PartReservationService struct {
-	Reservations ports.PartReservationRepository
-	PartItems    ports.PartItemRepository
-	Tasks        ports.TaskRepository
-	Locker       ports.Locker
-	Audit        ports.AuditRepository
-	Outbox       ports.OutboxRepository
-	Clock        app.Clock
+	Reservations    ports.PartReservationRepository
+	PartItems       ports.PartItemRepository
+	PartDefinitions ports.PartDefinitionRepository
+	Tasks           ports.TaskRepository
+	Alerts          ports.AlertRepository
+	Locker          ports.Locker
+	Audit           ports.AuditRepository
+	Outbox          ports.OutboxRepository
+	Clock           app.Clock
 }
 
 func (s *PartReservationService) ListByTask(ctx context.Context, orgID, taskID uuid.UUID) ([]domain.PartReservation, error) {
@@ -116,6 +118,8 @@ func (s *PartReservationService) UpdateState(ctx context.Context, actor app.Acto
 		if err := s.PartItems.UpdateStatus(ctx, actor.OrgID, reservation.PartItemID, domain.PartItemUsed, s.Clock.Now()); err != nil {
 			return domain.PartReservation{}, err
 		}
+		// Check stock level and create alert if below threshold
+		s.checkStockLevel(ctx, actor.OrgID, reservation.PartItemID)
 	}
 
 	reservation.State = newState
@@ -130,6 +134,73 @@ func (s *PartReservationService) UpdateState(ctx context.Context, actor app.Acto
 	}
 
 	return reservation, nil
+}
+
+// checkStockLevel checks if a part definition's stock has dropped below
+// min_stock_level after a part item is used. If so, it creates a low-stock alert.
+func (s *PartReservationService) checkStockLevel(ctx context.Context, orgID uuid.UUID, partItemID uuid.UUID) {
+	if s.Alerts == nil || s.PartDefinitions == nil || s.PartItems == nil {
+		return
+	}
+
+	// Get the part item to find its definition
+	item, err := s.PartItems.GetByID(ctx, orgID, partItemID)
+	if err != nil {
+		return
+	}
+
+	// Get the definition for stock thresholds
+	def, err := s.PartDefinitions.GetByID(ctx, orgID, item.DefinitionID)
+	if err != nil {
+		return
+	}
+
+	if def.MinStockLevel <= 0 {
+		return // no threshold configured
+	}
+
+	// Count in-stock items for this definition
+	inStock := domain.PartItemInStock
+	items, err := s.PartItems.List(ctx, ports.PartItemFilter{
+		OrgID:        &orgID,
+		DefinitionID: &item.DefinitionID,
+		Status:       &inStock,
+	})
+	if err != nil {
+		return
+	}
+
+	currentStock := len(items)
+	if currentStock >= def.MinStockLevel {
+		return // stock is fine
+	}
+
+	// Create low-stock alert
+	thresholdVal := float64(def.MinStockLevel)
+	currentVal := float64(currentStock)
+	alert := domain.Alert{
+		ID:              uuid.New(),
+		OrgID:           orgID,
+		Level:           domain.AlertWarning,
+		Category:        "parts_low_stock",
+		Title:           fmt.Sprintf("Low stock: %s", def.Name),
+		Description:     fmt.Sprintf("Stock level (%d) is below minimum (%d)", currentStock, def.MinStockLevel),
+		EntityType:      "part_definition",
+		EntityID:        def.ID,
+		ThresholdValue:  &thresholdVal,
+		CurrentValue:    &currentVal,
+		CreatedAt:       s.Clock.Now(),
+	}
+
+	if currentStock == 0 {
+		alert.Level = domain.AlertCritical
+		alert.Title = fmt.Sprintf("Out of stock: %s", def.Name)
+		// Auto-escalate critical alerts in 1 hour
+		escalateAt := s.Clock.Now().Add(time.Hour)
+		alert.AutoEscalateAt = &escalateAt
+	}
+
+	_, _ = s.Alerts.Create(ctx, alert)
 }
 
 func (s *PartReservationService) emitReservationAudit(ctx context.Context, actor app.Actor, reservation domain.PartReservation, action domain.AuditAction) {

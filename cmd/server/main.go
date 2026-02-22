@@ -15,6 +15,7 @@ import (
 	"github.com/aeromaintain/amss/internal/config"
 	postgresinfra "github.com/aeromaintain/amss/internal/infra/postgres"
 	redisinfra "github.com/aeromaintain/amss/internal/infra/redis"
+	"github.com/aeromaintain/amss/internal/jobs"
 	"github.com/aeromaintain/amss/pkg/auth"
 	"github.com/aeromaintain/amss/pkg/observability"
 	"github.com/exaring/otelpgx"
@@ -98,6 +99,7 @@ func main() {
 		Aircraft:     &postgresinfra.AircraftRepository{DB: dbpool},
 		Reservations: &postgresinfra.PartReservationRepository{DB: dbpool},
 		Compliance:   &postgresinfra.ComplianceRepository{DB: dbpool},
+		Certs:        &postgresinfra.CertificationRepository{DB: dbpool},
 		Audit:        &postgresinfra.AuditRepository{DB: dbpool},
 		Outbox:       &postgresinfra.OutboxRepository{DB: dbpool},
 	}
@@ -137,6 +139,15 @@ func main() {
 			logger.Fatal().Err(err).Msg("grpc server failed")
 		}
 	}()
+
+	// Start dashboard metrics broadcaster (uses WebSocket hub from router)
+	metricsBroadcaster := &jobs.MetricsBroadcaster{
+		Metrics:  &postgresinfra.MetricsRepository{DB: dbpool},
+		Hub:      rest.WSHub,
+		Logger:   logger,
+		Interval: 30 * time.Second,
+	}
+	go metricsBroadcaster.Run(ctx)
 
 	go func() {
 		logger.Info().Str("addr", cfg.HTTPAddr).Msg("http server starting")

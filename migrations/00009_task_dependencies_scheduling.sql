@@ -1,17 +1,51 @@
 -- +goose Up
 
 -- Task priority levels
-CREATE TYPE task_priority AS ENUM ('routine', 'urgent', 'aog', 'critical');
+-- +goose StatementBegin
+DO $$ BEGIN
+  CREATE TYPE task_priority AS ENUM ('routine', 'urgent', 'aog', 'critical');
+EXCEPTION WHEN duplicate_object THEN NULL;
+END $$;
+-- +goose StatementEnd
 
 -- Add priority and rescheduling fields to maintenance_tasks
-ALTER TABLE maintenance_tasks ADD COLUMN priority task_priority NOT NULL DEFAULT 'routine';
-ALTER TABLE maintenance_tasks ADD COLUMN reschedule_count int NOT NULL DEFAULT 0;
-ALTER TABLE maintenance_tasks ADD COLUMN reschedule_reason text;
-ALTER TABLE maintenance_tasks ADD COLUMN original_start_time timestamptz;
-ALTER TABLE maintenance_tasks ADD COLUMN original_end_time timestamptz;
+-- +goose StatementBegin
+DO $$ BEGIN
+  ALTER TABLE maintenance_tasks ADD COLUMN priority task_priority NOT NULL DEFAULT 'routine';
+EXCEPTION WHEN duplicate_column THEN NULL;
+END $$;
+-- +goose StatementEnd
+
+-- +goose StatementBegin
+DO $$ BEGIN
+  ALTER TABLE maintenance_tasks ADD COLUMN reschedule_count int NOT NULL DEFAULT 0;
+EXCEPTION WHEN duplicate_column THEN NULL;
+END $$;
+-- +goose StatementEnd
+
+-- +goose StatementBegin
+DO $$ BEGIN
+  ALTER TABLE maintenance_tasks ADD COLUMN reschedule_reason text;
+EXCEPTION WHEN duplicate_column THEN NULL;
+END $$;
+-- +goose StatementEnd
+
+-- +goose StatementBegin
+DO $$ BEGIN
+  ALTER TABLE maintenance_tasks ADD COLUMN original_start_time timestamptz;
+EXCEPTION WHEN duplicate_column THEN NULL;
+END $$;
+-- +goose StatementEnd
+
+-- +goose StatementBegin
+DO $$ BEGIN
+  ALTER TABLE maintenance_tasks ADD COLUMN original_end_time timestamptz;
+EXCEPTION WHEN duplicate_column THEN NULL;
+END $$;
+-- +goose StatementEnd
 
 -- Task dependencies (prerequisite relationships)
-CREATE TABLE task_dependencies (
+CREATE TABLE IF NOT EXISTS task_dependencies (
   id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
   org_id uuid NOT NULL REFERENCES organizations(id),
   task_id uuid NOT NULL,
@@ -26,12 +60,29 @@ CREATE TABLE task_dependencies (
 );
 
 -- Part availability tracking (stock level thresholds)
-ALTER TABLE part_definitions ADD COLUMN min_stock_level int NOT NULL DEFAULT 0;
-ALTER TABLE part_definitions ADD COLUMN reorder_point int NOT NULL DEFAULT 0;
-ALTER TABLE part_definitions ADD COLUMN lead_time_days int;
+-- +goose StatementBegin
+DO $$ BEGIN
+  ALTER TABLE part_definitions ADD COLUMN min_stock_level int NOT NULL DEFAULT 0;
+EXCEPTION WHEN duplicate_column THEN NULL;
+END $$;
+-- +goose StatementEnd
+
+-- +goose StatementBegin
+DO $$ BEGIN
+  ALTER TABLE part_definitions ADD COLUMN reorder_point int NOT NULL DEFAULT 0;
+EXCEPTION WHEN duplicate_column THEN NULL;
+END $$;
+-- +goose StatementEnd
+
+-- +goose StatementBegin
+DO $$ BEGIN
+  ALTER TABLE part_definitions ADD COLUMN lead_time_days int;
+EXCEPTION WHEN duplicate_column THEN NULL;
+END $$;
+-- +goose StatementEnd
 
 -- Schedule change events (for notification and audit)
-CREATE TABLE schedule_change_events (
+CREATE TABLE IF NOT EXISTS schedule_change_events (
   id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
   org_id uuid NOT NULL REFERENCES organizations(id),
   task_id uuid NOT NULL,
@@ -49,10 +100,10 @@ CREATE TABLE schedule_change_events (
 );
 
 -- Indexes
-CREATE INDEX task_dependencies_task_idx ON task_dependencies (org_id, task_id);
-CREATE INDEX task_dependencies_depends_on_idx ON task_dependencies (org_id, depends_on_task_id);
-CREATE INDEX maintenance_tasks_priority_idx ON maintenance_tasks (org_id, priority) WHERE deleted_at IS NULL AND state IN ('scheduled', 'in_progress');
-CREATE INDEX schedule_change_events_task_idx ON schedule_change_events (org_id, task_id);
+CREATE INDEX IF NOT EXISTS task_dependencies_task_idx ON task_dependencies (org_id, task_id);
+CREATE INDEX IF NOT EXISTS task_dependencies_depends_on_idx ON task_dependencies (org_id, depends_on_task_id);
+CREATE INDEX IF NOT EXISTS maintenance_tasks_priority_idx ON maintenance_tasks (org_id, priority) WHERE deleted_at IS NULL AND state IN ('scheduled', 'in_progress');
+CREATE INDEX IF NOT EXISTS schedule_change_events_task_idx ON schedule_change_events (org_id, task_id);
 
 -- +goose Down
 DROP INDEX IF EXISTS schedule_change_events_task_idx;

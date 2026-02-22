@@ -1,10 +1,14 @@
 -- +goose Up
 
--- Certification authority enum
-CREATE TYPE certification_authority AS ENUM ('faa', 'easa', 'ecaa', 'icao', 'other');
+-- +goose StatementBegin
+DO $$ BEGIN
+  CREATE TYPE certification_authority AS ENUM ('faa', 'easa', 'ecaa', 'icao', 'other');
+EXCEPTION WHEN duplicate_object THEN NULL;
+END $$;
+-- +goose StatementEnd
 
 -- Certification types recognized by the system
-CREATE TABLE certification_types (
+CREATE TABLE IF NOT EXISTS certification_types (
   id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
   code text NOT NULL UNIQUE,
   name text NOT NULL,
@@ -16,7 +20,7 @@ CREATE TABLE certification_types (
 );
 
 -- Aircraft type definitions (for type ratings)
-CREATE TABLE aircraft_types (
+CREATE TABLE IF NOT EXISTS aircraft_types (
   id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
   icao_code text NOT NULL UNIQUE,
   manufacturer text NOT NULL,
@@ -26,7 +30,7 @@ CREATE TABLE aircraft_types (
 );
 
 -- Mechanic certifications
-CREATE TABLE employee_certifications (
+CREATE TABLE IF NOT EXISTS employee_certifications (
   id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
   org_id uuid NOT NULL REFERENCES organizations(id),
   user_id uuid NOT NULL,
@@ -46,7 +50,7 @@ CREATE TABLE employee_certifications (
 );
 
 -- Employee type ratings (per certification)
-CREATE TABLE employee_type_ratings (
+CREATE TABLE IF NOT EXISTS employee_type_ratings (
   id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
   org_id uuid NOT NULL REFERENCES organizations(id),
   user_id uuid NOT NULL,
@@ -60,12 +64,15 @@ CREATE TABLE employee_type_ratings (
 );
 
 -- Special skill categories
-CREATE TYPE skill_category AS ENUM (
-  'structural', 'avionics', 'engine', 'ndt', 'general'
-);
+-- +goose StatementBegin
+DO $$ BEGIN
+  CREATE TYPE skill_category AS ENUM ('structural', 'avionics', 'engine', 'ndt', 'general');
+EXCEPTION WHEN duplicate_object THEN NULL;
+END $$;
+-- +goose StatementEnd
 
 -- Skill type definitions
-CREATE TABLE skill_types (
+CREATE TABLE IF NOT EXISTS skill_types (
   id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
   code text NOT NULL UNIQUE,
   name text NOT NULL,
@@ -74,7 +81,7 @@ CREATE TABLE skill_types (
 );
 
 -- Employee skills
-CREATE TABLE employee_skills (
+CREATE TABLE IF NOT EXISTS employee_skills (
   id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
   org_id uuid NOT NULL REFERENCES organizations(id),
   user_id uuid NOT NULL,
@@ -88,7 +95,7 @@ CREATE TABLE employee_skills (
 );
 
 -- Recency tracking (hours logged per type per mechanic)
-CREATE TABLE employee_recency_log (
+CREATE TABLE IF NOT EXISTS employee_recency_log (
   id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
   org_id uuid NOT NULL REFERENCES organizations(id),
   user_id uuid NOT NULL,
@@ -102,7 +109,7 @@ CREATE TABLE employee_recency_log (
 );
 
 -- Task skill requirements
-CREATE TABLE task_skill_requirements (
+CREATE TABLE IF NOT EXISTS task_skill_requirements (
   id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
   org_id uuid NOT NULL REFERENCES organizations(id),
   task_type maintenance_task_type NOT NULL,
@@ -116,15 +123,20 @@ CREATE TABLE task_skill_requirements (
 );
 
 -- Link aircraft table to aircraft_types
-ALTER TABLE aircraft ADD COLUMN aircraft_type_id uuid REFERENCES aircraft_types(id);
+-- +goose StatementBegin
+DO $$ BEGIN
+  ALTER TABLE aircraft ADD COLUMN aircraft_type_id uuid REFERENCES aircraft_types(id);
+EXCEPTION WHEN duplicate_column THEN NULL;
+END $$;
+-- +goose StatementEnd
 
 -- Indexes
-CREATE INDEX employee_certifications_user_idx ON employee_certifications (org_id, user_id) WHERE status = 'active';
-CREATE INDEX employee_certifications_expiry_idx ON employee_certifications (expiry_date) WHERE status = 'active' AND expiry_date IS NOT NULL;
-CREATE INDEX employee_type_ratings_user_idx ON employee_type_ratings (org_id, user_id) WHERE status = 'active';
-CREATE INDEX employee_skills_user_idx ON employee_skills (org_id, user_id);
-CREATE INDEX employee_recency_log_user_type_idx ON employee_recency_log (org_id, user_id, aircraft_type_id, work_date);
-CREATE INDEX task_skill_requirements_lookup_idx ON task_skill_requirements (org_id, task_type);
+CREATE INDEX IF NOT EXISTS employee_certifications_user_idx ON employee_certifications (org_id, user_id) WHERE status = 'active';
+CREATE INDEX IF NOT EXISTS employee_certifications_expiry_idx ON employee_certifications (expiry_date) WHERE status = 'active' AND expiry_date IS NOT NULL;
+CREATE INDEX IF NOT EXISTS employee_type_ratings_user_idx ON employee_type_ratings (org_id, user_id) WHERE status = 'active';
+CREATE INDEX IF NOT EXISTS employee_skills_user_idx ON employee_skills (org_id, user_id);
+CREATE INDEX IF NOT EXISTS employee_recency_log_user_type_idx ON employee_recency_log (org_id, user_id, aircraft_type_id, work_date);
+CREATE INDEX IF NOT EXISTS task_skill_requirements_lookup_idx ON task_skill_requirements (org_id, task_type);
 
 -- +goose Down
 DROP INDEX IF EXISTS task_skill_requirements_lookup_idx;

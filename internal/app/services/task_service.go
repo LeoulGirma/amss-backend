@@ -16,6 +16,7 @@ type TaskService struct {
 	Aircraft     ports.AircraftRepository
 	Reservations ports.PartReservationRepository
 	Compliance   ports.ComplianceRepository
+	Certs        ports.CertificationRepository
 	Audit        ports.AuditRepository
 	Outbox       ports.OutboxRepository
 	Clock        app.Clock
@@ -80,6 +81,13 @@ func (s *TaskService) Create(ctx context.Context, actor app.Actor, input TaskCre
 		return domain.MaintenanceTask{}, err
 	}
 
+	// Validate mechanic qualifications if assigned
+	if task.AssignedMechanicID != nil {
+		if err := s.validateMechanicQualification(ctx, orgID, *task.AssignedMechanicID, task.Type, task.AircraftID); err != nil {
+			return domain.MaintenanceTask{}, err
+		}
+	}
+
 	created, err := s.Tasks.Create(ctx, task)
 	if err != nil {
 		return domain.MaintenanceTask{}, err
@@ -141,6 +149,13 @@ func (s *TaskService) Update(ctx context.Context, actor app.Actor, orgID uuid.UU
 
 	if err := task.ValidateCreate(); err != nil {
 		return domain.MaintenanceTask{}, err
+	}
+
+	// Validate mechanic qualifications if mechanic is being changed
+	if input.AssignedMechanicID != nil {
+		if err := s.validateMechanicQualification(ctx, task.OrgID, *input.AssignedMechanicID, task.Type, task.AircraftID); err != nil {
+			return domain.MaintenanceTask{}, err
+		}
 	}
 
 	updated, err := s.Tasks.Update(ctx, task)
@@ -239,6 +254,13 @@ func (s *TaskService) TransitionState(ctx context.Context, actor app.Actor, task
 
 	if err := task.CanTransition(newState, ctxTransition); err != nil {
 		return domain.MaintenanceTask{}, err
+	}
+
+	// Re-validate mechanic qualifications at completion (sign-off)
+	if newState == domain.TaskStateCompleted && task.AssignedMechanicID != nil {
+		if err := s.validateMechanicQualification(ctx, task.OrgID, *task.AssignedMechanicID, task.Type, task.AircraftID); err != nil {
+			return domain.MaintenanceTask{}, err
+		}
 	}
 
 	if newState == domain.TaskStateCancelled && s.Reservations != nil {
@@ -344,6 +366,106 @@ func (s *TaskService) emitTaskOutbox(ctx context.Context, task domain.Maintenanc
 		"timestamp": s.Clock.Now(),
 	}
 	_ = s.Outbox.Enqueue(ctx, task.OrgID, eventType, "maintenance_task", task.ID, payload, dedupeKey)
+}
+
+// validateMechanicQualification performs a 6-step check:
+// 1. Certification exists  2. Active status  3. Not expired  4. Recency hours
+// 5. Required skills at proficiency  6. Type rating for aircraft
+// If Certs is nil, qualification checks are skipped (graceful degradation).
+func (s *TaskService) validateMechanicQualification(ctx context.Context, orgID, mechanicID uuid.UUID, taskType domain.TaskType, aircraftID uuid.UUID) error {
+	if s.Certs == nil {
+		return nil
+	}
+
+	// Look up the aircraft to get its type_id
+	aircraft, err := s.Aircraft.GetByID(ctx, orgID, aircraftID)
+	if err != nil {
+		return err
+	}
+
+	// Get requirements for this task type + aircraft type
+	requirements, err := s.Certs.ListRequirements(ctx, orgID, taskType, aircraft.AircraftTypeID)
+	if err != nil {
+		return err
+	}
+	if len(requirements) == 0 {
+		return nil // no requirements defined, any mechanic qualifies
+	}
+
+	now := s.Clock.Now()
+
+	// Get mechanic's certifications
+	certs, err := s.Certs.ListCertsByUser(ctx, orgID, mechanicID)
+	if err != nil {
+		return err
+	}
+	certMap := make(map[uuid.UUID]domain.EmployeeCertification)
+	for _, c := range certs {
+		certMap[c.CertTypeID] = c
+	}
+
+	// Get mechanic's skills
+	skills, err := s.Certs.ListSkillsByUser(ctx, orgID, mechanicID)
+	if err != nil {
+		return err
+	}
+	skillMap := make(map[uuid.UUID]domain.EmployeeSkill)
+	for _, sk := range skills {
+		skillMap[sk.SkillTypeID] = sk
+	}
+
+	for _, req := range requirements {
+		if req.CertTypeID != nil {
+			cert, ok := certMap[*req.CertTypeID]
+			if !ok {
+				return domain.NewValidationError("mechanic lacks required certification")
+			}
+			if !cert.IsActive(now) {
+				return domain.NewValidationError("mechanic certification is expired or inactive")
+			}
+
+			// Check recency if aircraft type is specified
+			if aircraft.AircraftTypeID != nil {
+				certType, err := s.Certs.GetCertTypeByID(ctx, *req.CertTypeID)
+				if err == nil && certType.RecencyRequiredMonths != nil && certType.RecencyPeriodMonths != nil {
+					since := now.AddDate(0, -*certType.RecencyPeriodMonths, 0)
+					hours, err := s.Certs.GetRecencyHours(ctx, orgID, mechanicID, *aircraft.AircraftTypeID, since)
+					if err == nil {
+						requiredHours := float64(*certType.RecencyRequiredMonths) * 160
+						if hours < requiredHours {
+							return domain.NewValidationError("mechanic has insufficient recency hours")
+						}
+					}
+				}
+			}
+		}
+
+		if req.SkillTypeID != nil {
+			skill, ok := skillMap[*req.SkillTypeID]
+			if !ok {
+				return domain.NewValidationError("mechanic lacks required skill")
+			}
+			if skill.IsExpired(now) {
+				return domain.NewValidationError("mechanic skill qualification is expired")
+			}
+			if skill.ProficiencyLevel < req.MinProficiencyLevel {
+				return domain.NewValidationError("mechanic skill proficiency level is insufficient")
+			}
+		}
+	}
+
+	// Check type rating for aircraft type
+	if aircraft.AircraftTypeID != nil {
+		hasRating, err := s.Certs.HasTypeRating(ctx, orgID, mechanicID, *aircraft.AircraftTypeID)
+		if err != nil {
+			return err
+		}
+		if !hasRating {
+			return domain.NewValidationError("mechanic lacks type rating for this aircraft")
+		}
+	}
+
+	return nil
 }
 
 func (s *TaskService) emitTaskCreated(ctx context.Context, task domain.MaintenanceTask) {

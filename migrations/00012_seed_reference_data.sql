@@ -5,7 +5,8 @@ INSERT INTO regulatory_authorities (code, name, country, record_retention_years)
   ('FAA',  'Federal Aviation Administration',           'US',  1),
   ('EASA', 'European Union Aviation Safety Agency',     'EU',  3),
   ('ECAA', 'Ethiopian Civil Aviation Authority',        'ET',  5),
-  ('ICAO', 'International Civil Aviation Organization', 'INT', 5);
+  ('ICAO', 'International Civil Aviation Organization', 'INT', 5)
+ON CONFLICT (code) DO NOTHING;
 
 -- Seed certification types
 INSERT INTO certification_types (code, name, authority, has_expiry, recency_required_months, recency_period_months) VALUES
@@ -23,7 +24,8 @@ INSERT INTO certification_types (code, name, authority, has_expiry, recency_requ
   ('EASA_C',  'Part-66 Category C (Base Maintenance)', 'easa', true,  6, 24),
   -- ECAA certifications
   ('ECAA_AMT', 'Aircraft Maintenance Technician',      'ecaa', true,  6, 24),
-  ('ECAA_AVI', 'Avionics Technician',                  'ecaa', true,  6, 24);
+  ('ECAA_AVI', 'Avionics Technician',                  'ecaa', true,  6, 24)
+ON CONFLICT (code) DO NOTHING;
 
 -- Seed common aircraft types
 INSERT INTO aircraft_types (icao_code, manufacturer, model, series) VALUES
@@ -40,7 +42,8 @@ INSERT INTO aircraft_types (icao_code, manufacturer, model, series) VALUES
   ('A20N', 'Airbus',  'A320neo',   'NEO'),
   ('A359', 'Airbus',  'A350-900',  'XWB'),
   ('A35K', 'Airbus',  'A350-1000', 'XWB'),
-  ('DH8D', 'De Havilland', 'Dash 8-400', 'Q400');
+  ('DH8D', 'De Havilland', 'Dash 8-400', 'Q400')
+ON CONFLICT (icao_code) DO NOTHING;
 
 -- Seed skill types
 INSERT INTO skill_types (code, name, category) VALUES
@@ -67,39 +70,39 @@ INSERT INTO skill_types (code, name, category) VALUES
   -- General
   ('FUEL_TANK',  'Fuel Tank Entry & Repair',       'general'),
   ('HYDRAULIC',  'Hydraulic Systems',              'general'),
-  ('PNEUMATIC',  'Pneumatic Systems',              'general');
+  ('PNEUMATIC',  'Pneumatic Systems',              'general')
+ON CONFLICT (code) DO NOTHING;
 
 -- Seed compliance templates
-INSERT INTO compliance_templates (authority_id, template_code, name, description, required_fields) VALUES
-  ((SELECT id FROM regulatory_authorities WHERE code = 'FAA'),
-   'FAA_337', 'FAA Form 337 - Major Repair/Alteration',
+INSERT INTO compliance_templates (authority_id, template_code, name, description, required_fields)
+SELECT ra.id, v.template_code, v.name, v.description, v.required_fields::jsonb
+FROM (VALUES
+  ('FAA', 'FAA_337', 'FAA Form 337 - Major Repair/Alteration',
    'Required for major repairs and alterations per 14 CFR Part 43',
-   '{"fields": ["aircraft_id", "registration_number", "repair_station_number", "description_of_work", "approval_basis", "data_used", "weight_balance_change", "inspector_signature", "date"]}'::jsonb),
+   '{"fields": ["aircraft_id", "registration_number", "repair_station_number", "description_of_work", "approval_basis", "data_used", "weight_balance_change", "inspector_signature", "date"]}'),
 
-  ((SELECT id FROM regulatory_authorities WHERE code = 'FAA'),
-   'FAA_8610', 'FAA Form 8610-2 - Airman Certificate/Rating',
+  ('FAA', 'FAA_8610', 'FAA Form 8610-2 - Airman Certificate/Rating',
    'Application for airman certificate or rating',
-   '{"fields": ["applicant_name", "certificate_type", "rating_requested", "experience_log", "examiner_signature", "date"]}'::jsonb),
+   '{"fields": ["applicant_name", "certificate_type", "rating_requested", "experience_log", "examiner_signature", "date"]}'),
 
-  ((SELECT id FROM regulatory_authorities WHERE code = 'EASA'),
-   'EASA_FORM1', 'EASA Form 1 - Authorized Release Certificate',
+  ('EASA', 'EASA_FORM1', 'EASA Form 1 - Authorized Release Certificate',
    'Certificate of Release to Service for components per Part-145',
-   '{"fields": ["organization_name", "approval_reference", "part_number", "serial_number", "description", "work_performed", "remarks", "certifying_staff_signature", "date"]}'::jsonb),
+   '{"fields": ["organization_name", "approval_reference", "part_number", "serial_number", "description", "work_performed", "remarks", "certifying_staff_signature", "date"]}'),
 
-  ((SELECT id FROM regulatory_authorities WHERE code = 'EASA'),
-   'EASA_CRS', 'Certificate of Release to Service',
+  ('EASA', 'EASA_CRS', 'Certificate of Release to Service',
    'EASA Part-145 maintenance release certificate',
-   '{"fields": ["aircraft_registration", "aircraft_type", "work_order_number", "description_of_work", "limitations", "certifying_staff_name", "authorization_number", "signature", "date"]}'::jsonb),
+   '{"fields": ["aircraft_registration", "aircraft_type", "work_order_number", "description_of_work", "limitations", "certifying_staff_name", "authorization_number", "signature", "date"]}'),
 
-  ((SELECT id FROM regulatory_authorities WHERE code = 'ECAA'),
-   'ECAA_CRS', 'ECAA Certificate of Release to Service',
+  ('ECAA', 'ECAA_CRS', 'ECAA Certificate of Release to Service',
    'Ethiopian CAA maintenance release certificate',
-   '{"fields": ["aircraft_registration", "aircraft_type", "work_performed", "reference_documents", "technician_name", "license_number", "signature", "date"]}'::jsonb),
+   '{"fields": ["aircraft_registration", "aircraft_type", "work_performed", "reference_documents", "technician_name", "license_number", "signature", "date"]}'),
 
-  ((SELECT id FROM regulatory_authorities WHERE code = 'ICAO'),
-   'MAINT_RELEASE', 'Maintenance Release (Generic)',
+  ('ICAO', 'MAINT_RELEASE', 'Maintenance Release (Generic)',
    'ICAO Annex 6 compliant maintenance release',
-   '{"fields": ["aircraft_registration", "description_of_work", "reference_documents", "certifying_person", "license_number", "signature", "date"]}'::jsonb);
+   '{"fields": ["aircraft_registration", "description_of_work", "reference_documents", "certifying_person", "license_number", "signature", "date"]}')
+) AS v(authority_code, template_code, name, description, required_fields)
+JOIN regulatory_authorities ra ON ra.code = v.authority_code
+ON CONFLICT (authority_id, template_code) DO NOTHING;
 
 -- +goose Down
 DELETE FROM compliance_templates;

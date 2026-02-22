@@ -23,6 +23,7 @@ type Client struct {
 	ID     string
 	OrgID  string
 	UserID string
+	Role   string
 	Conn   *websocket.Conn
 	Send   chan []byte
 	Hub    *Hub
@@ -139,6 +140,57 @@ func (h *Hub) ClientCount(orgID string) int {
 	return len(h.clients[orgID])
 }
 
+// BroadcastToRoles sends a message only to clients with one of the specified roles.
+func (h *Hub) BroadcastToRoles(orgID string, roles []string, msgType string, payload interface{}) {
+	msg := Message{
+		Type:      msgType,
+		Payload:   payload,
+		Timestamp: time.Now().UTC().Format(time.RFC3339),
+	}
+
+	data, err := json.Marshal(msg)
+	if err != nil {
+		h.logger.Error().Err(err).Msg("failed to marshal message")
+		return
+	}
+
+	roleSet := make(map[string]bool, len(roles))
+	for _, r := range roles {
+		roleSet[r] = true
+	}
+
+	h.mu.RLock()
+	clients := h.clients[orgID]
+	h.mu.RUnlock()
+
+	for client := range clients {
+		if !roleSet[client.Role] {
+			continue
+		}
+		select {
+		case client.Send <- data:
+		default:
+			h.mu.Lock()
+			close(client.Send)
+			delete(h.clients[orgID], client)
+			h.mu.Unlock()
+		}
+	}
+}
+
+// ConnectedOrgIDs returns a list of org IDs that have at least one connected client.
+func (h *Hub) ConnectedOrgIDs() []string {
+	h.mu.RLock()
+	defer h.mu.RUnlock()
+	ids := make([]string, 0, len(h.clients))
+	for orgID, clients := range h.clients {
+		if len(clients) > 0 {
+			ids = append(ids, orgID)
+		}
+	}
+	return ids
+}
+
 // Upgrader for WebSocket connections
 var upgrader = websocket.Upgrader{
 	ReadBufferSize:  1024,
@@ -156,9 +208,10 @@ type Handler struct {
 
 // ServeWS upgrades HTTP connection to WebSocket
 func (h *Handler) ServeWS(w http.ResponseWriter, r *http.Request) {
-	// Get org_id and user_id from query params (since WS doesn't use auth middleware easily)
+	// Get org_id, user_id, and role from query params (since WS doesn't use auth middleware easily)
 	orgID := r.URL.Query().Get("org_id")
 	userID := r.URL.Query().Get("user_id")
+	role := r.URL.Query().Get("role")
 
 	if orgID == "" {
 		http.Error(w, "org_id required", http.StatusBadRequest)
@@ -175,6 +228,7 @@ func (h *Handler) ServeWS(w http.ResponseWriter, r *http.Request) {
 		ID:     uuid.New().String(),
 		OrgID:  orgID,
 		UserID: userID,
+		Role:   role,
 		Conn:   conn,
 		Send:   make(chan []byte, 256),
 		Hub:    h.Hub,

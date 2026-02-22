@@ -1,7 +1,7 @@
 -- +goose Up
 
 -- Regulatory authorities
-CREATE TABLE regulatory_authorities (
+CREATE TABLE IF NOT EXISTS regulatory_authorities (
   id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
   code text NOT NULL UNIQUE,
   name text NOT NULL,
@@ -11,7 +11,7 @@ CREATE TABLE regulatory_authorities (
 );
 
 -- Organization regulatory registrations
-CREATE TABLE org_regulatory_registrations (
+CREATE TABLE IF NOT EXISTS org_regulatory_registrations (
   id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
   org_id uuid NOT NULL REFERENCES organizations(id),
   authority_id uuid NOT NULL REFERENCES regulatory_authorities(id),
@@ -27,11 +27,22 @@ CREATE TABLE org_regulatory_registrations (
 );
 
 -- Compliance directive types
-CREATE TYPE directive_type AS ENUM ('ad', 'sb', 'eo', 'tcds', 'stc');
-CREATE TYPE directive_applicability AS ENUM ('mandatory', 'recommended', 'optional');
+-- +goose StatementBegin
+DO $$ BEGIN
+  CREATE TYPE directive_type AS ENUM ('ad', 'sb', 'eo', 'tcds', 'stc');
+EXCEPTION WHEN duplicate_object THEN NULL;
+END $$;
+-- +goose StatementEnd
+
+-- +goose StatementBegin
+DO $$ BEGIN
+  CREATE TYPE directive_applicability AS ENUM ('mandatory', 'recommended', 'optional');
+EXCEPTION WHEN duplicate_object THEN NULL;
+END $$;
+-- +goose StatementEnd
 
 -- Airworthiness Directives & Service Bulletins
-CREATE TABLE compliance_directives (
+CREATE TABLE IF NOT EXISTS compliance_directives (
   id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
   org_id uuid NOT NULL REFERENCES organizations(id),
   authority_id uuid NOT NULL REFERENCES regulatory_authorities(id),
@@ -51,7 +62,7 @@ CREATE TABLE compliance_directives (
 );
 
 -- Aircraft-specific directive compliance status
-CREATE TABLE aircraft_directive_compliance (
+CREATE TABLE IF NOT EXISTS aircraft_directive_compliance (
   id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
   org_id uuid NOT NULL REFERENCES organizations(id),
   aircraft_id uuid NOT NULL,
@@ -72,7 +83,7 @@ CREATE TABLE aircraft_directive_compliance (
 );
 
 -- Compliance document templates (per authority)
-CREATE TABLE compliance_templates (
+CREATE TABLE IF NOT EXISTS compliance_templates (
   id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
   authority_id uuid NOT NULL REFERENCES regulatory_authorities(id),
   template_code text NOT NULL,
@@ -85,16 +96,33 @@ CREATE TABLE compliance_templates (
 );
 
 -- Enhance existing compliance_items with authority link
-ALTER TABLE compliance_items ADD COLUMN authority_id uuid REFERENCES regulatory_authorities(id);
-ALTER TABLE compliance_items ADD COLUMN directive_id uuid REFERENCES compliance_directives(id);
-ALTER TABLE compliance_items ADD COLUMN category text;
+-- +goose StatementBegin
+DO $$ BEGIN
+  ALTER TABLE compliance_items ADD COLUMN authority_id uuid REFERENCES regulatory_authorities(id);
+EXCEPTION WHEN duplicate_column THEN NULL;
+END $$;
+-- +goose StatementEnd
+
+-- +goose StatementBegin
+DO $$ BEGIN
+  ALTER TABLE compliance_items ADD COLUMN directive_id uuid REFERENCES compliance_directives(id);
+EXCEPTION WHEN duplicate_column THEN NULL;
+END $$;
+-- +goose StatementEnd
+
+-- +goose StatementBegin
+DO $$ BEGIN
+  ALTER TABLE compliance_items ADD COLUMN category text;
+EXCEPTION WHEN duplicate_column THEN NULL;
+END $$;
+-- +goose StatementEnd
 
 -- Indexes
-CREATE INDEX compliance_directives_authority_idx ON compliance_directives (org_id, authority_id);
-CREATE INDEX compliance_directives_type_idx ON compliance_directives (org_id, directive_type);
-CREATE INDEX aircraft_directive_compliance_aircraft_idx ON aircraft_directive_compliance (org_id, aircraft_id);
-CREATE INDEX aircraft_directive_compliance_status_idx ON aircraft_directive_compliance (org_id, status) WHERE status IN ('pending', 'overdue');
-CREATE INDEX org_regulatory_registrations_org_idx ON org_regulatory_registrations (org_id);
+CREATE INDEX IF NOT EXISTS compliance_directives_authority_idx ON compliance_directives (org_id, authority_id);
+CREATE INDEX IF NOT EXISTS compliance_directives_type_idx ON compliance_directives (org_id, directive_type);
+CREATE INDEX IF NOT EXISTS aircraft_directive_compliance_aircraft_idx ON aircraft_directive_compliance (org_id, aircraft_id);
+CREATE INDEX IF NOT EXISTS aircraft_directive_compliance_status_idx ON aircraft_directive_compliance (org_id, status) WHERE status IN ('pending', 'overdue');
+CREATE INDEX IF NOT EXISTS org_regulatory_registrations_org_idx ON org_regulatory_registrations (org_id);
 
 -- +goose Down
 DROP INDEX IF EXISTS org_regulatory_registrations_org_idx;
